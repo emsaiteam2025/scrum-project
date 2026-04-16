@@ -1,0 +1,386 @@
+"use client";
+import React, { useState, useEffect } from 'react';
+import Navigation from '@/components/Navigation';
+import ScrumTooltip from '@/components/ScrumTooltip';
+
+interface Task {
+  id: string;
+  type: 'pbi' | 'task';
+  status: 'pbi' | 'todo' | 'doing' | 'done' | 'accepted';
+  title: string;
+  desc?: string;
+  role?: string;
+  time?: string;
+}
+
+const initialTasks: Task[] = [];
+
+export default function Backlog() {
+  const [sprintDays, setSprintDays] = useState<number | string>(30);
+  const [errorMsg, setErrorMsg] = useState<string>('');
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const savedDays = localStorage.getItem('sprintDays');
+    if (savedDays) {
+      setSprintDays(Number(savedDays));
+    }
+  }, []);
+
+  const handleDaysChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (value === '') {
+      setSprintDays('');
+      setErrorMsg('');
+      return;
+    }
+    
+    const num = Number(value);
+    if (num > 30) {
+      setSprintDays(30);
+      setErrorMsg('⚠️ 週期天數絕對不能超過 30 天！已為您限制為 30 天。');
+      localStorage.setItem('sprintDays', '30');
+    } else if (num < 1) {
+      setSprintDays(1);
+      setErrorMsg('');
+      localStorage.setItem('sprintDays', '1');
+    } else {
+      setSprintDays(num);
+      setErrorMsg('');
+      localStorage.setItem('sprintDays', num.toString());
+    }
+  };
+
+  const onDragStart = (e: React.DragEvent, task: Task) => {
+    if (editingTaskId === task.id) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.setData('taskId', task.id);
+    e.dataTransfer.setData('taskType', task.type);
+  };
+
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault(); // Required to allow dropping
+  };
+
+  const onDrop = (e: React.DragEvent, targetStatus: Task['status'], targetTaskId?: string) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData('taskId');
+    if (!id) return;
+    
+    setTasks(prevTasks => {
+      const taskIndex = prevTasks.findIndex(t => t.id === id);
+      if (taskIndex === -1) return prevTasks;
+      
+      const task = prevTasks[taskIndex];
+      
+      // 限制 1：PBI 不能移動到別的欄位
+      if (task.type === 'pbi' && targetStatus !== 'pbi') {
+        return prevTasks; // 拒絕移動
+      }
+      
+      // 限制 2：任務不能移動到 PBI 欄位
+      if (task.type === 'task' && targetStatus === 'pbi') {
+        return prevTasks; // 拒絕移動
+      }
+      
+      const newTasks = [...prevTasks];
+      
+      // 處理同欄位內的排序 (例如 PBI 上下移動)
+      if (task.status === targetStatus && targetTaskId) {
+        const targetIndex = newTasks.findIndex(t => t.id === targetTaskId);
+        if (targetIndex !== -1 && taskIndex !== targetIndex) {
+          // 陣列元素交換位置
+          const [removed] = newTasks.splice(taskIndex, 1);
+          newTasks.splice(targetIndex, 0, removed);
+          return newTasks;
+        }
+      }
+      
+      // 更新狀態
+      newTasks[taskIndex] = { ...task, status: targetStatus };
+      return newTasks;
+    });
+  };
+
+  const deleteTask = (id: string) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
+  };
+
+  const updateTask = (id: string, field: keyof Task, value: string) => {
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
+  };
+
+  const renderTasks = (status: Task['status']) => {
+    const filteredTasks = tasks.filter(t => t.status === status);
+    
+    if (filteredTasks.length === 0) {
+      return (
+        <div className="flex items-center justify-center h-full text-[#8a7f72] text-sm font-bold border-4 border-dashed border-[#b5a695] rounded-2xl m-2 bg-[#fffdf9]/50 min-h-[150px]">
+          <span>{status === 'done' || status === 'accepted' ? '🍃 拖曳任務至此' : '🪹 尚無項目'}</span>
+        </div>
+      );
+    }
+
+    return filteredTasks.map(task => {
+      const isEditing = editingTaskId === task.id;
+
+      return (
+        <div 
+          key={task.id}
+          draggable={!isEditing}
+          onDragStart={(e) => onDragStart(e, task)}
+          onDragOver={onDragOver}
+          onDrop={(e) => {
+            e.stopPropagation(); // 避免觸發外層欄位的 drop
+            onDrop(e, status, task.id);
+          }}
+          className={`bg-[#fffdf9] border-2 p-4 rounded-xl shadow-sm transition-all group
+            ${task.type === 'pbi' ? 'border-[#d4a373] bg-[#f2e3c6] hover:bg-[#faebce]' : 'border-[#b5a695] hover:border-[#c96262]'}
+            ${task.status === 'doing' ? 'border-l-8 border-l-[#d4a373]' : ''}
+            ${!isEditing ? 'cursor-grab active:cursor-grabbing hover:shadow-md' : 'shadow-md'}
+          `}
+        >
+          {/* Header */}
+          <div className="flex justify-between items-start mb-3">
+            <span className={`text-[10px] font-bold px-2 py-1 rounded-md border 
+              ${task.type === 'pbi' ? 'text-[#8b5a2b] bg-[#faebce] border-[#d4a373]' : 'text-[#c96262] bg-[#fceded] border-[#e6b1b1]'}`}>
+              {task.type === 'pbi' ? 'PBI' : '任務'}
+            </span>
+            
+            {!isEditing && (
+              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                <button onClick={() => setEditingTaskId(task.id)} className="text-blue-500 hover:text-blue-700 bg-blue-50 p-1 rounded" title="編輯">✏️</button>
+                <button onClick={() => deleteTask(task.id)} className="text-red-500 hover:text-red-700 bg-red-50 p-1 rounded" title="刪除">🗑️</button>
+              </div>
+            )}
+          </div>
+
+          {/* Body */}
+          {isEditing ? (
+            <div className="space-y-2 mt-2">
+              <input 
+                type="text" 
+                value={task.title} 
+                onChange={(e) => updateTask(task.id, 'title', e.target.value)}
+                className="w-full text-sm font-bold p-2 border-2 border-[#b5a695] rounded focus:outline-none focus:border-[#5b755e]"
+                placeholder={task.type === 'pbi' ? "PBI 標題" : "任務標題"}
+              />
+              <textarea 
+                value={task.desc || ''} 
+                onChange={(e) => updateTask(task.id, 'desc', e.target.value)}
+                className="w-full text-xs p-2 border-2 border-[#b5a695] rounded focus:outline-none focus:border-[#5b755e]"
+                placeholder={task.type === 'pbi' ? "PBI 描述說明 (選填)" : "任務詳細說明 (選填)"}
+                rows={3}
+              />
+              {task.type === 'task' && (
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={task.role || ''} 
+                    onChange={(e) => updateTask(task.id, 'role', e.target.value)}
+                    className="w-1/2 text-xs p-2 border-2 border-[#b5a695] rounded focus:outline-none focus:border-[#5b755e]"
+                    placeholder="負責人"
+                  />
+                  <input 
+                    type="text" 
+                    value={task.time || ''} 
+                    onChange={(e) => updateTask(task.id, 'time', e.target.value)}
+                    className="w-1/2 text-xs p-2 border-2 border-[#b5a695] rounded focus:outline-none focus:border-[#5b755e]"
+                    placeholder="預估工時 (例: 4h)"
+                  />
+                </div>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button 
+                  onClick={() => {
+                    // 如果沒有標題，不允許儲存（或直接給預設值）
+                    if (!task.title.trim()) {
+                      updateTask(task.id, 'title', '未命名項目');
+                    }
+                    setEditingTaskId(null);
+                  }}
+                  className="flex-1 bg-[#8fb996] text-white text-xs font-bold py-2 rounded hover:bg-[#5b755e] transition-colors"
+                >
+                  確認張貼
+                </button>
+                <button 
+                  onClick={() => {
+                    // 如果是剛建立且還沒寫標題就取消，則直接刪除該卡片
+                    if (!task.title.trim()) {
+                      deleteTask(task.id);
+                    }
+                    setEditingTaskId(null);
+                  }}
+                  className="bg-[#fceded] text-[#c96262] text-xs font-bold px-3 py-2 rounded hover:bg-[#e6b1b1] transition-colors"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="font-bold text-[15px] text-[#3e362e] mb-2 leading-tight">{task.title}</div>
+              {task.desc && <div className="text-[13px] text-[#6b5e50] leading-relaxed mb-2">{task.desc}</div>}
+              {(task.role || task.time) && (
+                <div className="mt-auto pt-2 flex items-center justify-between border-t border-[#e8d5b5]">
+                  {task.role && <div className="text-[11px] font-bold text-[#5b755e] bg-[#e8eedd] px-2 py-1 rounded-md border border-[#a5c2a8]">{task.role}</div>}
+                  {task.time && <div className="text-xs font-bold text-[#8a7f72]">{task.time}</div>}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      );
+    });
+  };
+
+  return (
+    <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
+      <div className="max-w-[1400px] mx-auto space-y-8">
+        
+        <Navigation />
+
+        {/* 頂部：Sprint 資訊欄位 */}
+        <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden relative">
+          <div className="bg-[#e07a5f] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white tracking-wider flex items-center gap-2 drop-shadow-sm">
+            <span>🔥</span> Sprint 核心資訊
+          </div>
+          <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="col-span-1 md:col-span-2 flex flex-col gap-2">
+              <label className="font-bold text-[#6b5e50]">Sprint Goal (目標)</label>
+              <input 
+                type="text" 
+                className="w-full px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#e07a5f]/50 shadow-inner font-medium text-[#3e362e]" 
+                placeholder="輸入本期主要目標..." 
+              />
+            </div>
+            <div className="flex flex-col gap-2 relative">
+              <label className="font-bold text-[#6b5e50]">週期 (天數)</label>
+              <input 
+                type="number" 
+                min="1"
+                max="30"
+                value={sprintDays}
+                onChange={handleDaysChange}
+                className="w-full px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#e07a5f]/50 shadow-inner font-medium text-[#3e362e]" 
+                placeholder="輸入天數 (最多 30)..." 
+              />
+              {errorMsg && (
+                <div className="absolute -bottom-6 left-0 text-xs font-bold text-[#c96262] bg-[#fceded] px-2 py-0.5 rounded border border-[#e6b1b1] whitespace-nowrap">
+                  {errorMsg}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="font-bold text-[#6b5e50]">利益關係人</label>
+              <input 
+                type="text" 
+                className="w-full px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#e07a5f]/50 shadow-inner font-medium text-[#3e362e]" 
+                placeholder="輸入相關業務單位或高管..." 
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* 看板區域 (Kanban Board) */}
+        <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden flex flex-col" style={{ minHeight: '650px' }}>
+          <div className="bg-[#76a5af] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white flex justify-between items-center tracking-wider drop-shadow-sm">
+            <div className="flex items-center gap-2">
+              <span>🎏</span> <ScrumTooltip keyword="Sprint Backlog" text="任務看板 (Sprint Backlog)" />
+            </div>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => {
+                  const newId = `pbi-${Date.now()}`;
+                  setTasks([{ id: newId, type: 'pbi', status: 'pbi', title: '', desc: '', role: '', time: '' }, ...tasks]);
+                  setEditingTaskId(newId); // 新增後立刻進入編輯模式
+                }}
+                className="bg-[#fffdf9] text-[#8b5a2b] border-2 border-[#d4a373] px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-[#faebce] transition-all flex items-center gap-1"
+              >
+                <span>🍄</span> 新增 PBI
+              </button>
+              <button 
+                onClick={() => {
+                  const newId = `task-${Date.now()}`;
+                  setTasks([{ id: newId, type: 'task', status: 'todo', title: '', desc: '', role: '', time: '' }, ...tasks]);
+                  setEditingTaskId(newId); // 新增後立刻進入編輯模式
+                }}
+                className="bg-[#fffdf9] text-[#76a5af] border-2 border-[#5b755e] px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-[#e8eedd] hover:text-[#5b755e] transition-all flex items-center gap-1"
+              >
+                <span>🌱</span> 新增任務
+              </button>
+            </div>
+          </div>
+          
+          <div className="flex-1 grid grid-cols-1 md:grid-cols-5 divide-y md:divide-y-0 md:divide-x-4 divide-[#5b755e] bg-[#f4f1ea]/50">
+            
+            {/* Column 1: 排序的 PBI */}
+            <div 
+              className="flex flex-col h-full"
+              onDragOver={onDragOver}
+              onDrop={(e) => onDrop(e, 'pbi')}
+            >
+              <div className="bg-[#e8e4d9] border-b-4 border-[#5b755e] p-3 font-bold text-center text-[#5b755e] tracking-wider"><ScrumTooltip keyword="Product Backlog" text="排序的 PBI (1-5)" /></div>
+              <div className="p-4 space-y-4 flex-1 overflow-y-auto min-h-[200px]">
+                {renderTasks('pbi')}
+              </div>
+            </div>
+
+            {/* Column 2: TO DO */}
+            <div 
+              className="flex flex-col h-full"
+              onDragOver={onDragOver}
+              onDrop={(e) => onDrop(e, 'todo')}
+            >
+              <div className="bg-[#fceded] border-b-4 border-[#5b755e] p-3 font-bold text-center text-[#c96262] tracking-wider">TO DO (待處理)</div>
+              <div className="p-4 space-y-4 flex-1 overflow-y-auto bg-[#fceded]/30 min-h-[200px]">
+                {renderTasks('todo')}
+              </div>
+            </div>
+
+            {/* Column 3: Doing */}
+            <div 
+              className="flex flex-col h-full"
+              onDragOver={onDragOver}
+              onDrop={(e) => onDrop(e, 'doing')}
+            >
+              <div className="bg-[#faebce] border-b-4 border-[#5b755e] p-3 font-bold text-center text-[#d4a373] tracking-wider">Doing (進行中)</div>
+              <div className="p-4 space-y-4 flex-1 overflow-y-auto bg-[#faebce]/30 min-h-[200px]">
+                {renderTasks('doing')}
+              </div>
+            </div>
+
+            {/* Column 4: Done */}
+            <div 
+              className="flex flex-col h-full"
+              onDragOver={onDragOver}
+              onDrop={(e) => onDrop(e, 'done')}
+            >
+              <div className="bg-[#e8eedd] border-b-4 border-[#5b755e] p-3 font-bold text-center text-[#4a7c59] tracking-wider">Done (已完成)</div>
+              <div className="p-4 space-y-4 flex-1 overflow-y-auto bg-[#e8eedd]/30 min-h-[200px]">
+                {renderTasks('done')}
+              </div>
+            </div>
+
+            {/* Column 5: 驗收的 PBI */}
+            <div 
+              className="flex flex-col h-full"
+              onDragOver={onDragOver}
+              onDrop={(e) => onDrop(e, 'accepted')}
+            >
+              <div className="bg-[#eac4d0] border-b-4 border-[#5b755e] p-3 font-bold text-center text-[#9b596f] tracking-wider"><ScrumTooltip keyword="Increment" text="驗收的 PBI (增量)" /></div>
+              <div className="p-4 space-y-4 flex-1 overflow-y-auto bg-[#eac4d0]/20 min-h-[200px]">
+                {renderTasks('accepted')}
+              </div>
+            </div>
+
+          </div>
+        </section>
+        
+      </div>
+    </main>
+  );
+}

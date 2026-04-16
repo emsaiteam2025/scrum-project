@@ -1,0 +1,301 @@
+"use client";
+import React, { useState, useRef } from 'react';
+import Link from 'next/link';
+
+import Navigation from '@/components/Navigation';
+import ScrumTooltip from '@/components/ScrumTooltip';
+
+export default function Home() {
+  const poIdeaRef = useRef<HTMLTextAreaElement>(null);
+  const [apiKey, setApiKey] = useState('');
+  const [projectName, setProjectName] = useState('');
+
+  const [whys, setWhys] = useState([{ id: '1', text: '' }]);
+  const [whats, setWhats] = useState([{ id: '1', text: '' }]);
+  const [hows, setHows] = useState([{ id: '1', text: '' }]);
+
+  // 元件載入時讀取 API Key 與 專案名稱
+  React.useEffect(() => {
+    const savedKey = localStorage.getItem('openai_api_key');
+    if (savedKey) setApiKey(savedKey);
+    
+    const savedSprintName = localStorage.getItem('currentSprintName');
+    if (savedSprintName) setProjectName(savedSprintName);
+  }, []);
+
+  const handleProjectNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setProjectName(value);
+    localStorage.setItem('currentSprintName', value);
+  };
+
+  const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setApiKey(value);
+    localStorage.setItem('openai_api_key', value);
+  };
+
+  // 模擬 AI 潤飾功能
+  const handleAiRewrite = async (setter: React.Dispatch<React.SetStateAction<{ id: string; text: string }[]>>, items: { id: string; text: string }[], index: number, fieldType: 'WHY' | 'WHAT' | 'HOW') => {
+    if (!apiKey) {
+      alert('⚠️ 請先於頁面頂部輸入您的 API Key，才能啟動魔法潤飾功能！');
+      return;
+    }
+
+    // 取得 PO 提出的初步想法 (這裡可以未來擴充用)
+    const poIdea = poIdeaRef.current?.value.trim() || '';
+    console.log("poIdea", poIdea);
+    const newItems = [...items];
+    const currentText = newItems[index].text.trim();
+    
+    // 輔助函式：從陣列中隨機抽取一個範本
+    const randomChoice = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+
+    let generatedContent = '';
+
+    if (currentText) {
+      // 情境 1：使用者已經有寫東西，幫他「潤飾」得更專業 (加入多種隨機擴寫範本)
+      const whyTemplates = [
+        `為了驗證技術可行性並創造商業價值，我們需要：${currentText}。這將確保系統順暢運作，提升整體營運效率。`,
+        `考量到使用者的核心痛點，落實「${currentText}」能大幅降低溝通成本並加速作業流程。`,
+        `以敏捷的商業目標為導向，實現「${currentText}」是我們邁向系統行動化與數位轉型的關鍵一步。`
+      ];
+      const whatTemplates = [
+        `基於現有規劃「${currentText}」，具體交付物包含：\n1. 核心功能模組開發\n2. API 串接與錯誤處理機制\n3. 通過安全性與壓力測試`,
+        `針對「${currentText}」的具體產出目標：完成對應的 UI/UX 設計與前後端資料串接，並產出系統驗收報告。`,
+        `將「${currentText}」的目標拆解為：\n- 第一階段：基礎框架與連線建立\n- 第二階段：核心業務邏輯實作與測試`
+      ];
+      const howTemplates = [
+        `針對「${currentText}」，技術實作策略為：\n- 前端：採用響應式框架開發\n- 後端：實作 JWT 驗證與路由\n- 基礎設施：配合網管開啟必要之 VPN/防火牆埠號`,
+        `為順利完成「${currentText}」，我們將採取跨部門協作：開發團隊進行雙人程式設計(Pair Programming)，資安團隊提前介入架構審查。`,
+        `執行方式將圍繞「${currentText}」：預計導入 CI/CD 自動化部署流程，確保每次程式碼提交都能快速驗證並整合至測試機。`
+      ];
+
+      if (fieldType === 'WHY') generatedContent = randomChoice(whyTemplates);
+      if (fieldType === 'WHAT') generatedContent = randomChoice(whatTemplates);
+      if (fieldType === 'HOW') generatedContent = randomChoice(howTemplates);
+
+    } else {
+      // 情境 2：使用者毫無想法 (空白)，幫他「無中生有」產出參考範例 (提供多種不同角度的內容)
+      const whyBlankTemplates = [
+        `驗證外部登入機制的安全性，確保售服人員在客戶現場能無縫且安全地存取 RWS 系統。`,
+        `降低第一線服務人員的操作阻力與時間浪費，進而大幅提升報修效率與整體客戶滿意度。`,
+        `建立可靠的 API 資料交換基礎設施，為未來擴展更多行動化應用程式打下穩固的基石。`
+      ];
+      const whatBlankTemplates = [
+        `1. 實作外部安全登入 (VPN/SSO) 整合模組\n2. 開發 R 單基礎 API (Token 驗證與資料獲取)\n3. 產出環境連線壓力測試報告`,
+        `建置專屬的後端中介層 (Middleware)，負責處理 APP 的所有資料交換與跨系統同步，並確保資料不漏失。`,
+        `完成前端 APP 的登入頁面、主選單導覽，並成功串接測試環境的 Mock API 以確保流程暢通。`
+      ];
+      const howBlankTemplates = [
+        `1. 資安團隊：協助配置防火牆與 VPN\n2. 後端團隊：使用 Node.js 實作 JWT 發行機制\n3. 前端團隊：開發 PoC (概念驗證) 畫面\n4. QA團隊：進行端到端 (E2E) 測試`,
+        `採用敏捷式雙週迭代：第一週專注於架構設定與 API 規格定義，第二週進行前後端串接與整合測試。`,
+        `透過跨部門的每日站會 (Daily Scrum) 同步進度與排除阻礙；開發端則以 TDD (測試驅動開發) 確保 Token 機制的邏輯正確無誤。`
+      ];
+
+      const prefix = ''; // 取消重複帶入 PO 想法的前綴字
+      
+      if (fieldType === 'WHY') generatedContent = prefix + randomChoice(whyBlankTemplates);
+      if (fieldType === 'WHAT') generatedContent = prefix + randomChoice(whatBlankTemplates);
+      if (fieldType === 'HOW') generatedContent = prefix + randomChoice(howBlankTemplates);
+    }
+
+    newItems[index].text = generatedContent;
+    setter(newItems);
+  };
+
+  const renderDynamicList = (items: { id: string; text: string }[], setter: React.Dispatch<React.SetStateAction<{ id: string; text: string }[]>>, placeholder: string, fieldType: 'WHY' | 'WHAT' | 'HOW') => {
+    return (
+      <div className="flex-1 flex flex-col gap-4">
+        {items.map((item, index) => (
+          <div key={item.id} className="flex gap-3 items-start group">
+            <textarea 
+              className="flex-1 px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e] transition-all" 
+              placeholder={placeholder} 
+              rows={2}
+              value={item.text}
+              onChange={(e) => {
+                const newItems = [...items];
+                newItems[index].text = e.target.value;
+                setter(newItems);
+              }}
+            />
+            <div className="flex flex-col gap-2 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+              <button 
+                onClick={() => handleAiRewrite(setter, items, index, fieldType)}
+                className="bg-[#f4e4e9] text-[#9b596f] px-3 py-2 rounded-lg text-xs font-bold hover:bg-[#eac4d0] border-2 border-[#d1a3b4] transition-all flex items-center justify-center shadow-sm"
+                title="使用魔法讓描述更精準"
+              >
+                ✨ 魔法潤飾
+              </button>
+              {items.length > 1 && (
+                <button 
+                  onClick={() => setter(items.filter((_: { id: string; text: string }, i: number) => i !== index))}
+                  className="bg-[#fceded] text-[#c96262] hover:bg-[#f7d7d7] px-3 py-2 rounded-lg border-2 border-[#e6b1b1] text-xs font-bold transition-all flex items-center justify-center shadow-sm"
+                >
+                  🧹 掃除
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        <div>
+          <button 
+            onClick={() => setter([...items, { id: Date.now().toString(), text: '' }])}
+            className="text-sm font-bold text-[#5b755e] hover:text-[#3d4f3f] flex items-center gap-1 px-4 py-2 bg-[#e8eedd] hover:bg-[#dcedc1] rounded-full border-2 border-[#a5c2a8] transition-all inline-flex shadow-sm"
+          >
+            🌱 播種新欄位
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
+      <div className="max-w-6xl mx-auto space-y-8">
+        
+        <Navigation />
+
+        {/* API Key 設定區塊 */}
+        <div className="bg-[#fffdf9] border-2 border-[#b5a695] p-4 rounded-xl shadow-sm flex flex-col md:flex-row items-center gap-4">
+          <div className="font-bold text-[#8b5a2b] flex items-center gap-2 whitespace-nowrap">
+            <span>🔑</span> AI 魔法鑰匙 (API Key)：
+          </div>
+          <input 
+            type="password" 
+            value={apiKey}
+            onChange={handleApiKeyChange}
+            className="flex-1 w-full px-4 py-2 bg-[#f4f1ea] border border-[#d3cbbd] rounded-lg focus:outline-none focus:border-[#8fb996] text-[#3e362e] font-sans"
+            placeholder="請輸入您的 OpenAI API Key (sk-...)"
+          />
+          <div className="text-xs text-[#8a7f72]">
+            * 您的金鑰僅會儲存於本地瀏覽器中
+          </div>
+        </div>
+
+        {/* Header 專案基本資訊 */}
+        <header className="bg-[#8fb996] border-4 border-[#5b755e] p-6 rounded-2xl shadow-lg relative overflow-hidden">
+          <div className="absolute top-0 right-0 opacity-20 transform translate-x-4 -translate-y-4">
+             <span className="text-9xl">🍃</span>
+          </div>
+          <div className="flex flex-col md:flex-row md:items-center gap-4 relative z-10">
+            <h1 className="text-3xl font-bold text-white drop-shadow-md whitespace-nowrap tracking-wider">專案名稱：</h1>
+            <input 
+              type="text" 
+              value={projectName}
+              onChange={handleProjectNameChange}
+              className="flex-1 px-4 py-3 text-lg bg-[#fffdf9] border-2 border-[#5b755e] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner text-[#3e362e]"
+              placeholder="請輸入專案名稱..."
+            />
+          </div>
+        </header>
+
+        {/* Sprint Planning 模組 */}
+        <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl relative">
+          <div className="bg-[#d4a373] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white tracking-wider flex items-center gap-2 drop-shadow-sm">
+            <span>🍄</span> <ScrumTooltip keyword="Sprint Planning" text="Sprint Planning (Sprint 計畫)" />
+          </div>
+          
+          <div className="p-6 space-y-6">
+            {/* 基礎資訊 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="flex flex-col gap-2">
+                <label className="font-bold text-[#6b5e50]">目的</label>
+                <div className="px-4 py-3 bg-[#e8e4d9] border-2 border-[#b5a695] rounded-xl text-[#3e362e] shadow-inner font-medium">
+                  建立共識並敲定行動計畫
+                </div>
+              </div>
+              
+              <div className="flex flex-col gap-2">
+                <label className="font-bold text-[#6b5e50]">時間限制 (TIME)</label>
+                <select className="px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]" defaultValue="2">
+                  <option value="1">1 週 (≤ 2 小時)</option>
+                  <option value="2">2 週 (≤ 4 小時)</option>
+                  <option value="3">3 週 (≤ 6 小時)</option>
+                  <option value="4">4 週 (≤ 8 小時)</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="font-bold text-[#6b5e50]">開始日</label>
+                <input type="date" className="px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]" />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="font-bold text-[#6b5e50]">與會人</label>
+                <div className="px-4 py-3 bg-[#e8e4d9] border-2 border-[#b5a695] rounded-xl text-[#3e362e] shadow-inner font-medium break-words">
+                  <ScrumTooltip keyword="PO" text="PO" />、
+                  <ScrumTooltip keyword="SM" text="SM" />、
+                  <ScrumTooltip keyword="DEVS" text="DEVS" />、其他（利益關係人、專家）
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="font-bold text-[#6b5e50]">初步想法 (PO提出)</label>
+              <textarea 
+                ref={poIdeaRef}
+                rows={2} 
+                className="w-full px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]"
+                placeholder="請輸入初步想法..."
+              />
+            </div>
+
+            {/* 核心規劃矩陣 */}
+            <div className="mt-8 border-t-2 border-[#d3cbbd] pt-8">
+              <h3 className="font-bold text-2xl mb-6 text-[#5b755e] flex items-center gap-2">
+                <span>🌱</span> 核心規劃矩陣
+              </h3>
+              
+              <div className="space-y-6">
+                
+                {/* WHY */}
+                <div className="flex flex-col lg:flex-row gap-4">
+                  <div className="lg:w-64 bg-[#f2e3c6] p-4 flex flex-col items-center justify-center border-2 border-[#d4a373] rounded-2xl text-center shrink-0 shadow-sm relative">
+                    <div className="absolute -bottom-2 -right-2 text-4xl opacity-20">☀️</div>
+                    <div className="font-bold text-2xl mb-2 text-[#8b5a2b]"><ScrumTooltip keyword="WHY" text="WHY" /></div>
+                    <div className="text-sm font-bold text-[#6b5e50]">[為什麼這個 Sprint 有價值？]</div>
+                    <div className="text-sm font-bold text-[#4a7c59] mt-1">[驗證技術可行性]</div>
+                  </div>
+                  {renderDynamicList(whys, setWhys, "請輸入價值描述...", 'WHY')}
+                </div>
+
+                {/* WHAT */}
+                <div className="flex flex-col lg:flex-row gap-4 mt-6">
+                  <div className="lg:w-64 bg-[#dcedc1] p-4 flex flex-col items-center justify-center border-2 border-[#8fb996] rounded-2xl text-center shrink-0 shadow-sm relative">
+                    <div className="absolute -bottom-2 -left-2 text-4xl opacity-20">🌲</div>
+                    <div className="font-bold text-2xl mb-2 text-[#5b755e]"><ScrumTooltip keyword="WHAT" text="WHAT" /></div>
+                    <div className="text-sm font-bold text-[#6b5e50]">[這個 Sprint 能完成什麼？]</div>
+                    <div className="text-sm font-bold text-[#4a7c59] mt-1">[具體化的功能模組]</div>
+                    <div className="text-sm font-bold text-[#c06c55] mt-1">(Sprint Backlog基礎)</div>
+                  </div>
+                  {renderDynamicList(whats, setWhats, "請輸入具體功能模組...", 'WHAT')}
+                </div>
+
+                {/* HOW */}
+                <div className="flex flex-col lg:flex-row gap-4 mt-6">
+                  <div className="lg:w-64 bg-[#c2dce3] p-4 flex flex-col items-center justify-center border-2 border-[#76a5af] rounded-2xl text-center shrink-0 shadow-sm relative">
+                    <div className="absolute -top-2 -right-2 text-4xl opacity-20">☁️</div>
+                    <div className="font-bold text-2xl mb-2 text-[#467386]"><ScrumTooltip keyword="HOW" text="HOW" /></div>
+                    <div className="text-sm font-bold text-[#6b5e50]">[工作將如何完成？]</div>
+                    <div className="text-sm font-bold text-[#4a7c59] mt-1">[思考如何串接這些工具]</div>
+                  </div>
+                  {renderDynamicList(hows, setHows, "請輸入工作方式與工具...", 'HOW')}
+                </div>
+
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-8">
+              <Link href="/backlog" className="bg-[#e07a5f] text-white px-8 py-3 rounded-full font-bold text-lg hover:bg-[#c66147] hover:-translate-y-1 transition-all duration-200 shadow-lg border-2 border-[#8a4231] inline-block text-center flex items-center gap-2">
+                <span>🚂</span> 儲存計畫並前往 Backlog
+              </Link>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  );
+}
