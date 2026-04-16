@@ -86,23 +86,38 @@ export default function SprintList() {
   };
 
   const deleteSprint = async (id: string) => {
+    if (!id) {
+      alert('無法刪除此專案，因為專案 ID 無效（可能為舊的壞資料）。');
+      // 仍然將其從畫面移除
+      const updated = sprints.filter(s => s.id !== id);
+      setSprints(updated);
+      if (!user) localStorage.setItem('sprints', JSON.stringify(updated));
+      return;
+    }
+
     if (confirm('確定要刪除這個 Sprint 嗎？相關資料將會遺失。')) {
       const updated = sprints.filter(s => s.id !== id);
       setSprints(updated);
       
       if (user) {
-        await deleteDoc(doc(db, 'users', user.uid, 'sprints', id));
+        try {
+          await deleteDoc(doc(db, 'users', user.uid, 'sprints', id));
+        } catch (err) {
+          console.error("刪除雲端資料失敗:", err);
+        }
       } else {
         localStorage.setItem('sprints', JSON.stringify(updated));
       }
 
       if (localStorage.getItem('currentSprintId') === id) {
         localStorage.removeItem('currentSprintId');
+        localStorage.removeItem('currentSprintName');
       }
     }
   };
 
   const updateSprintName = async (id: string, newName: string) => {
+    if (!id) return;
     const sprintToUpdate = sprints.find(s => s.id === id);
     if (!sprintToUpdate) return;
     const updatedData = { ...sprintToUpdate, name: newName };
@@ -111,7 +126,11 @@ export default function SprintList() {
     setSprints(updated);
 
     if (user) {
-      await setDoc(doc(db, 'users', user.uid, 'sprints', id), updatedData, { merge: true });
+      try {
+        await setDoc(doc(db, 'users', user.uid, 'sprints', id), updatedData, { merge: true });
+      } catch (err) {
+        console.error("更新雲端名稱失敗:", err);
+      }
     } else {
       localStorage.setItem('sprints', JSON.stringify(updated));
     }
