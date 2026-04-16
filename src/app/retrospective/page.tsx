@@ -1,13 +1,25 @@
+"use client";
+
 import React from 'react';
+import { useAutoSave } from '@/hooks/useAutoSave';
 import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 
 export default function SprintRetrospective() {
+  const { data, updateData, loading } = useAutoSave('retrospective', {
+    keepStart: '',
+    problemStop: '',
+    actionItems: ''
+  });
+
   return (
     <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
       <div className="max-w-[1200px] mx-auto space-y-8">
         
         <Navigation />
+
+        {/* Loading Overlay */}
+        {loading && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"><div className="bg-white px-6 py-4 rounded-xl font-bold text-[#5b755e] shadow-xl text-lg flex items-center gap-3"><span>💾</span> <span>載入資料中...</span></div></div>}
 
         {/* 頂部：會議目標 */}
         <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden relative">
@@ -39,6 +51,8 @@ export default function SprintRetrospective() {
               <textarea 
                 className="flex-1 w-full p-4 bg-[#f9fcf8] border-2 border-[#8fb996] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e] resize-none min-h-[250px]" 
                 placeholder="記錄團隊本次表現優異、值得保留或開始嘗試的作法..."
+                value={data.keepStart}
+                onChange={e => updateData({ keepStart: e.target.value })}
               />
             </div>
           </section>
@@ -54,6 +68,8 @@ export default function SprintRetrospective() {
               <textarea 
                 className="flex-1 w-full p-4 bg-[#fdf8f8] border-2 border-[#e6b1b1] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#e6b1b1]/50 shadow-inner font-medium text-[#3e362e] resize-none min-h-[250px]" 
                 placeholder="記錄遇到的阻礙、問題或需要停止的不良習慣..."
+                value={data.problemStop}
+                onChange={e => updateData({ problemStop: e.target.value })}
               />
             </div>
           </section>
@@ -70,6 +86,8 @@ export default function SprintRetrospective() {
               <textarea 
                 className="flex-1 w-full p-4 bg-[#fcfbf9] border-2 border-[#e8d5b5] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#d4a373]/50 shadow-inner font-medium text-[#3e362e] resize-none min-h-[250px]" 
                 placeholder="列出下個 Sprint 的具體改進行動項目..."
+                value={data.actionItems}
+                onChange={e => updateData({ actionItems: e.target.value })}
               />
             </div>
           </section>

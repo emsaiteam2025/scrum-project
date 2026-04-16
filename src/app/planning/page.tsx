@@ -1,18 +1,24 @@
 "use client";
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
+import { useAutoSave } from '@/hooks/useAutoSave';
 import Link from 'next/link';
 
 import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 
 export default function Home() {
-  const poIdeaRef = useRef<HTMLTextAreaElement>(null);
   const [apiKey, setApiKey] = useState('');
   const [projectName, setProjectName] = useState('');
 
-  const [whys, setWhys] = useState([{ id: '1', text: '' }]);
-  const [whats, setWhats] = useState([{ id: '1', text: '' }]);
-  const [hows, setHows] = useState([{ id: '1', text: '' }]);
+  const { data, updateData, loading } = useAutoSave('planning', {
+    poIdea: '',
+    timeLimit: '2',
+    startDate: '',
+    stakeholders: '利益關係人、專家',
+    whys: [{ id: '1', text: '' }],
+    whats: [{ id: '1', text: '' }],
+    hows: [{ id: '1', text: '' }]
+  });
 
   // 元件載入時讀取 API Key 與 專案名稱
   React.useEffect(() => {
@@ -43,7 +49,7 @@ export default function Home() {
     }
 
     // 取得 PO 提出的初步想法 (這裡可以未來擴充用)
-    const poIdea = poIdeaRef.current?.value.trim() || '';
+    const poIdea = data.poIdea.trim() || '';
     console.log("poIdea", poIdea);
     const newItems = [...items];
     const currentText = newItems[index].text.trim();
@@ -191,6 +197,9 @@ export default function Home() {
           </div>
         </header>
 
+        {/* Loading Overlay */}
+        {loading && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"><div className="bg-white px-6 py-4 rounded-xl font-bold text-[#5b755e] shadow-xl text-lg flex items-center gap-3"><span>💾</span> <span>載入資料中...</span></div></div>}
+
         {/* Sprint Planning 模組 */}
         <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl relative">
           <div className="bg-[#d4a373] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white tracking-wider flex items-center gap-2 drop-shadow-sm">
@@ -209,7 +218,7 @@ export default function Home() {
               
               <div className="flex flex-col gap-2">
                 <label className="font-bold text-[#6b5e50]">時間限制 (TIME)</label>
-                <select className="px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]" defaultValue="2">
+                <select className="px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]" value={data.timeLimit} onChange={e => updateData({ timeLimit: e.target.value })}> 
                   <option value="1">1 週 (≤ 2 小時)</option>
                   <option value="2">2 週 (≤ 4 小時)</option>
                   <option value="3">3 週 (≤ 6 小時)</option>
@@ -219,7 +228,7 @@ export default function Home() {
 
               <div className="flex flex-col gap-2">
                 <label className="font-bold text-[#6b5e50]">開始日</label>
-                <input type="date" className="px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]" />
+                <input type="date" value={data.startDate} onChange={e => updateData({ startDate: e.target.value })} className="px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]" />
               </div>
 
               <div className="flex flex-col gap-2">
@@ -227,7 +236,7 @@ export default function Home() {
                 <div className="px-4 py-3 bg-[#e8e4d9] border-2 border-[#b5a695] rounded-xl text-[#3e362e] shadow-inner font-medium break-words">
                   <ScrumTooltip keyword="PO" text="PO" />、
                   <ScrumTooltip keyword="SM" text="SM" />、
-                  <ScrumTooltip keyword="DEVS" text="DEVS" />、其他（利益關係人、專家）
+                  <ScrumTooltip keyword="DEVS" text="DEVS" />、<input type="text" value={data.stakeholders} onChange={e => updateData({ stakeholders: e.target.value })} className="bg-transparent border-b-2 border-[#b5a695] focus:border-[#8fb996] outline-none ml-1 placeholder-[#8a7f72]" placeholder="其他參與者" />
                 </div>
               </div>
             </div>
@@ -235,7 +244,8 @@ export default function Home() {
             <div className="flex flex-col gap-2">
               <label className="font-bold text-[#6b5e50]">初步想法 (PO提出)</label>
               <textarea 
-                ref={poIdeaRef}
+                value={data.poIdea}
+                onChange={e => updateData({ poIdea: e.target.value })}
                 rows={2} 
                 className="w-full px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]"
                 placeholder="請輸入初步想法..."
@@ -258,7 +268,7 @@ export default function Home() {
                     <div className="text-sm font-bold text-[#6b5e50]">[為什麼這個 Sprint 有價值？]</div>
                     <div className="text-sm font-bold text-[#4a7c59] mt-1">[驗證技術可行性]</div>
                   </div>
-                  {renderDynamicList(whys, setWhys, "請輸入價值描述...", 'WHY')}
+                  {renderDynamicList(data.whys, (newItems) => updateData({ whys: typeof newItems === 'function' ? newItems(data.whys) : newItems }), "請輸入價值描述...", 'WHY')}
                 </div>
 
                 {/* WHAT */}
@@ -270,7 +280,7 @@ export default function Home() {
                     <div className="text-sm font-bold text-[#4a7c59] mt-1">[具體化的功能模組]</div>
                     <div className="text-sm font-bold text-[#c06c55] mt-1">(Sprint Backlog基礎)</div>
                   </div>
-                  {renderDynamicList(whats, setWhats, "請輸入具體功能模組...", 'WHAT')}
+                  {renderDynamicList(data.whats, (newItems) => updateData({ whats: typeof newItems === 'function' ? newItems(data.whats) : newItems }), "請輸入具體功能模組...", 'WHAT')}
                 </div>
 
                 {/* HOW */}
@@ -281,7 +291,7 @@ export default function Home() {
                     <div className="text-sm font-bold text-[#6b5e50]">[工作將如何完成？]</div>
                     <div className="text-sm font-bold text-[#4a7c59] mt-1">[思考如何串接這些工具]</div>
                   </div>
-                  {renderDynamicList(hows, setHows, "請輸入工作方式與工具...", 'HOW')}
+                  {renderDynamicList(data.hows, (newItems) => updateData({ hows: typeof newItems === 'function' ? newItems(data.hows) : newItems }), "請輸入工作方式與工具...", 'HOW')}
                 </div>
 
               </div>

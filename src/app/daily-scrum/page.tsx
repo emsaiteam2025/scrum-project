@@ -1,12 +1,18 @@
 "use client";
 import React, { useState, useEffect } from 'react';
+import { useAutoSave } from '@/hooks/useAutoSave';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 
 export default function DailyScrum() {
   const [sprintDays, setSprintDays] = useState<number>(30);
-  const [completedDays, setCompletedDays] = useState<boolean[]>([]);
+
+  const { data, updateData, loading } = useAutoSave('daily', {
+    completedDays: [] as boolean[]
+  });
+
+  const completedDays = data.completedDays;
 
   useEffect(() => {
     // 取得使用者設定的天數，預設 30
@@ -14,20 +20,25 @@ export default function DailyScrum() {
     const daysCount = savedDays ? Number(savedDays) : 30;
     setSprintDays(daysCount);
     
-    // 初始化打卡狀態陣列長度
-    setCompletedDays(Array(daysCount).fill(false));
-  }, []);
+    // 若初始化狀態為空或長度不對，則初始化
+    if (completedDays.length !== daysCount && !loading) {
+      updateData({ completedDays: Array(daysCount).fill(false) });
+    }
+  }, [loading]);
 
   const toggleDay = (index: number) => {
     const newDays = [...completedDays];
     newDays[index] = !newDays[index];
-    setCompletedDays(newDays);
+    updateData({ completedDays: newDays });
   };
   return (
     <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
       <div className="max-w-[1200px] mx-auto space-y-8">
         
         <Navigation />
+
+        {/* Loading Overlay */}
+        {loading && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"><div className="bg-white px-6 py-4 rounded-xl font-bold text-[#5b755e] shadow-xl text-lg flex items-center gap-3"><span>💾</span> <span>載入資料中...</span></div></div>}
 
         {/* 頂部：會議資訊 */}
         <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden relative">

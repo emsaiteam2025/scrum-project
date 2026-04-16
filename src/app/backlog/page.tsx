@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
+import { useAutoSave } from '@/hooks/useAutoSave';
 import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 
@@ -16,37 +17,51 @@ interface Task {
 const initialTasks: Task[] = [];
 
 export default function Backlog() {
-  const [sprintDays, setSprintDays] = useState<number | string>(30);
   const [errorMsg, setErrorMsg] = useState<string>('');
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
 
-  useEffect(() => {
-    const savedDays = localStorage.getItem('sprintDays');
-    if (savedDays) {
-      setSprintDays(Number(savedDays));
+  const { data, updateData, loading } = useAutoSave('backlog', {
+    sprintDays: 30 as number | string,
+    tasks: initialTasks,
+    sprintGoal: '',
+    stakeholders: ''
+  });
+
+  const sprintDays = data.sprintDays;
+  const tasks = data.tasks;
+  const setTasks = (valOrFn: Task[] | ((prev: Task[]) => Task[])) => {
+    if (typeof valOrFn === 'function') {
+      updateData({ tasks: valOrFn(data.tasks) });
+    } else {
+      updateData({ tasks: valOrFn });
     }
-  }, []);
+  };
+
+  useEffect(() => {
+    if (sprintDays) {
+      localStorage.setItem('sprintDays', sprintDays.toString());
+    }
+  }, [sprintDays]);
 
   const handleDaysChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     if (value === '') {
-      setSprintDays('');
+      updateData({ sprintDays: '' });
       setErrorMsg('');
       return;
     }
     
     const num = Number(value);
     if (num > 30) {
-      setSprintDays(30);
+      updateData({ sprintDays: 30 });
       setErrorMsg('⚠️ 週期天數絕對不能超過 30 天！已為您限制為 30 天。');
       localStorage.setItem('sprintDays', '30');
     } else if (num < 1) {
-      setSprintDays(1);
+      updateData({ sprintDays: 1 });
       setErrorMsg('');
       localStorage.setItem('sprintDays', '1');
     } else {
-      setSprintDays(num);
+      updateData({ sprintDays: num });
       setErrorMsg('');
       localStorage.setItem('sprintDays', num.toString());
     }
@@ -70,7 +85,7 @@ export default function Backlog() {
     const id = e.dataTransfer.getData('taskId');
     if (!id) return;
     
-    setTasks(prevTasks => {
+    setTasks((prevTasks: Task[]) => {
       const taskIndex = prevTasks.findIndex(t => t.id === id);
       if (taskIndex === -1) return prevTasks;
       
@@ -106,11 +121,11 @@ export default function Backlog() {
   };
 
   const deleteTask = (id: string) => {
-    setTasks(prev => prev.filter(t => t.id !== id));
+    setTasks((prev: Task[]) => prev.filter(t => t.id !== id));
   };
 
   const updateTask = (id: string, field: keyof Task, value: string) => {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
+    setTasks((prev: Task[]) => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
   };
 
   const renderTasks = (status: Task['status']) => {
@@ -243,6 +258,9 @@ export default function Backlog() {
         
         <Navigation />
 
+        {/* Loading Overlay */}
+        {loading && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"><div className="bg-white px-6 py-4 rounded-xl font-bold text-[#5b755e] shadow-xl text-lg flex items-center gap-3"><span>💾</span> <span>載入資料中...</span></div></div>}
+
         {/* 頂部：Sprint 資訊欄位 */}
         <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden relative">
           <div className="bg-[#e07a5f] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white tracking-wider flex items-center gap-2 drop-shadow-sm">
@@ -255,6 +273,8 @@ export default function Backlog() {
                 type="text" 
                 className="w-full px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#e07a5f]/50 shadow-inner font-medium text-[#3e362e]" 
                 placeholder="輸入本期主要目標..." 
+                value={data.sprintGoal}
+                onChange={e => updateData({ sprintGoal: e.target.value })}
               />
             </div>
             <div className="flex flex-col gap-2 relative">
@@ -280,6 +300,8 @@ export default function Backlog() {
                 type="text" 
                 className="w-full px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#e07a5f]/50 shadow-inner font-medium text-[#3e362e]" 
                 placeholder="輸入相關業務單位或高管..." 
+                value={data.stakeholders}
+                onChange={e => updateData({ stakeholders: e.target.value })}
               />
             </div>
           </div>
