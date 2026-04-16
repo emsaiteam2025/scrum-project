@@ -54,15 +54,11 @@ export default function SprintList() {
           if (saved) {
             setSprints(JSON.parse(saved));
           } else {
-            const initial = [{ id: 'default', name: '售服人員在外部現場能順利登打的RWS APP', createdAt: Date.now() }];
-            setSprints(initial);
-            localStorage.setItem('sprints', JSON.stringify(initial));
+            setSprints([]);
           }
         } catch (e) {
           console.error("解析 localStorage 失敗:", e);
-          const initial = [{ id: 'default', name: '售服人員在外部現場能順利登打的RWS APP', createdAt: Date.now() }];
-          setSprints(initial);
-          localStorage.setItem('sprints', JSON.stringify(initial));
+          setSprints([]);
         }
       }
       setLoading(false);

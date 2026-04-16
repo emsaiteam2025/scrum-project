@@ -11,7 +11,13 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
   const [loading, setLoading] = useState(true);
   const isFirstLoad = useRef(true);
   
-  const sprintId = typeof window !== 'undefined' ? localStorage.getItem('currentSprintId') : null;
+  const [sprintId, setSprintId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setSprintId(localStorage.getItem('currentSprintId'));
+    }
+  }, []);
 
   // 載入資料
   useEffect(() => {
