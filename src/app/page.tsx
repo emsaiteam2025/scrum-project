@@ -10,6 +10,7 @@ interface Sprint {
   createdAt: number;
   ownerId?: string;
   collaborators?: { email: string; role: 'editor' | 'viewer' }[];
+  collaboratorEmails?: string[];
 }
 
 export default function SprintList() {
@@ -18,6 +19,9 @@ export default function SprintList() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadTimeout, setLoadTimeout] = useState(false);
+  const [shareModalSprint, setShareModalSprint] = useState<Sprint | null>(null);
+  const [shareEmail, setShareEmail] = useState('');
+  const [shareRole, setShareRole] = useState<'editor'|'viewer'>('editor');
 
   useEffect(() => {
     // 如果載入超過 5 秒，顯示逾時提示
@@ -38,9 +42,19 @@ export default function SprintList() {
           const qOwned = query(sprintsRef, where('ownerId', '==', user.uid));
           const snapOwned = await getDocs(qOwned);
           
-          // TODO: 這裡未來可擴充使用 email 搜尋 collaborators
-          // 目前先抓取自己建立的專案
-          let loaded = snapOwned.docs.map(doc => doc.data() as Sprint);
+          let sharedDocs: Sprint[] = [];
+          if (user.email) {
+            const qShared = query(sprintsRef, where('collaboratorEmails', 'array-contains', user.email));
+            const snapShared = await getDocs(qShared);
+            sharedDocs = snapShared.docs.map(doc => doc.data() as Sprint);
+          }
+          
+          // 合併去重複
+          const allDocs = [...snapOwned.docs.map(d => d.data() as Sprint), ...sharedDocs];
+          const uniqueDocsMap = new Map();
+          allDocs.forEach(d => uniqueDocsMap.set(d.id, d));
+          
+          let loaded = Array.from(uniqueDocsMap.values());
           if (loaded.length > 0) {
             
             // 過濾並刪除壞掉的雲端資料
@@ -104,6 +118,47 @@ export default function SprintList() {
       await setDoc(sprintRef, newSprint);
     } else {
       localStorage.setItem('sprints', JSON.stringify(updated));
+    }
+  };
+
+  
+  const handleAddCollaborator = async () => {
+    if (!shareModalSprint || !shareEmail) return;
+    
+    let currentCollabs = shareModalSprint.collaborators || [];
+    if (currentCollabs.find(c => c.email === shareEmail)) return;
+    
+    currentCollabs = [...currentCollabs, { email: shareEmail, role: shareRole }];
+    const emails = currentCollabs.map(c => c.email);
+    
+    const updatedData = { collaborators: currentCollabs, collaboratorEmails: emails };
+    
+    try {
+      await setDoc(doc(db, 'sprints', shareModalSprint.id), updatedData, { merge: true });
+      // Update local state directly on the modal sprint as well so the UI updates
+      setShareModalSprint({ ...shareModalSprint, ...updatedData });
+      setSprints(prev => prev.map(s => s.id === shareModalSprint.id ? { ...s, ...updatedData } : s));
+      setShareEmail('');
+    } catch(err) {
+      console.error(err);
+    }
+  };
+  
+  const handleRemoveCollaborator = async (email: string) => {
+    if (!shareModalSprint) return;
+    
+    let currentCollabs = shareModalSprint.collaborators || [];
+    currentCollabs = currentCollabs.filter(c => c.email !== email);
+    const emails = currentCollabs.map(c => c.email);
+    
+    const updatedData = { collaborators: currentCollabs, collaboratorEmails: emails };
+    
+    try {
+      await setDoc(doc(db, 'sprints', shareModalSprint.id), updatedData, { merge: true });
+      setShareModalSprint({ ...shareModalSprint, ...updatedData });
+      setSprints(prev => prev.map(s => s.id === shareModalSprint.id ? { ...s, ...updatedData } : s));
+    } catch(err) {
+      console.error(err);
     }
   };
 
@@ -254,6 +309,13 @@ export default function SprintList() {
                     </div>
                     <div className="flex gap-2">
                       <button 
+                        onClick={(e) => { e.stopPropagation(); setShareModalSprint(sprint); }} 
+                        className="text-[#8b5a2b] hover:bg-[#faebce] p-1.5 rounded transition-colors"
+                        title="共享設定"
+                      >
+                        👥
+                      </button>
+                      <button 
                         onClick={(e) => { e.stopPropagation(); setEditingId(isEditing ? null : sprint.id); }} 
                         className="text-[#76a5af] hover:bg-[#e8eedd] p-1.5 rounded transition-colors"
                         title="編輯名稱"
@@ -317,6 +379,61 @@ export default function SprintList() {
                 🪹 目前還沒有任何 Sprint，點擊右上角建立一個吧！
               </div>
             )}
+          </div>
+        )}
+      
+        {/* Share Modal */}
+        {shareModalSprint && (
+          <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+            <div className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl p-6 shadow-2xl max-w-md w-full relative">
+               <button onClick={() => setShareModalSprint(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 font-bold text-xl">✕</button>
+               <h2 className="text-xl font-bold text-[#5b755e] mb-4 flex items-center gap-2"><span>👥</span> 共享專案</h2>
+               <p className="text-sm font-bold text-[#6b5e50] mb-4">專案名稱：{shareModalSprint.name}</p>
+               
+               <div className="bg-[#f4f1ea] border-2 border-[#b5a695] rounded-xl p-4 mb-4">
+                  <h3 className="font-bold text-sm text-[#3e362e] mb-2">已加入的協作者</h3>
+                  {(!shareModalSprint.collaborators || shareModalSprint.collaborators.length === 0) ? (
+                    <div className="text-xs text-[#8a7f72] py-2">目前沒有協作者</div>
+                  ) : (
+                    <ul className="space-y-2">
+                       {shareModalSprint.collaborators.map(c => (
+                         <li key={c.email} className="flex justify-between items-center text-sm font-bold bg-white px-3 py-2 border border-[#d3cbbd] rounded-lg">
+                           <span className="truncate flex-1 text-[#3e362e]">{c.email}</span>
+                           <span className="text-xs px-2 py-1 bg-[#e8eedd] text-[#4a7c59] rounded mx-2">{c.role === 'editor' ? '編輯' : '檢視'}</span>
+                           <button onClick={() => handleRemoveCollaborator(c.email)} className="text-red-500 hover:text-red-700">🗑️</button>
+                         </li>
+                       ))}
+                    </ul>
+                  )}
+               </div>
+               
+               <div className="space-y-3">
+                 <h3 className="font-bold text-sm text-[#3e362e]">新增協作者 (Google Email)</h3>
+                 <div className="flex gap-2">
+                   <input 
+                     type="email" 
+                     value={shareEmail} 
+                     onChange={e => setShareEmail(e.target.value)} 
+                     placeholder="輸入Email..."
+                     className="flex-1 p-2 border-2 border-[#b5a695] rounded-lg focus:outline-none focus:border-[#5b755e] font-bold text-sm"
+                   />
+                   <select 
+                     value={shareRole} 
+                     onChange={e => setShareRole(e.target.value as 'editor'|'viewer')}
+                     className="p-2 border-2 border-[#b5a695] rounded-lg bg-white focus:outline-none font-bold text-sm text-[#6b5e50]"
+                   >
+                     <option value="editor">編輯</option>
+                     <option value="viewer">檢視</option>
+                   </select>
+                 </div>
+                 <button 
+                   onClick={handleAddCollaborator}
+                   className="w-full bg-[#5b755e] text-white font-bold py-2 rounded-lg hover:bg-[#4a614d] transition-colors"
+                 >
+                   邀請加入
+                 </button>
+               </div>
+            </div>
           </div>
         )}
       </div>
