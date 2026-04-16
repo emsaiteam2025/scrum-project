@@ -35,7 +35,17 @@ export default function SprintList() {
           const sprintsRef = collection(db, 'users', user.uid, 'sprints');
           const snapshot = await getDocs(sprintsRef);
           if (!snapshot.empty) {
-            const loaded = snapshot.docs.map(doc => doc.data() as Sprint).sort((a, b) => b.createdAt - a.createdAt);
+            let loaded = snapshot.docs.map(doc => doc.data() as Sprint);
+            
+            // 過濾並刪除壞掉的雲端資料
+            const badDocs = loaded.filter(s => !s || !s.id || s.id === 'default' || !s.createdAt);
+            for (const bad of badDocs) {
+               try {
+                 await deleteDoc(doc(db, 'users', user.uid, 'sprints', bad.id || 'default'));
+               } catch(err) { console.error(err) }
+            }
+            
+            loaded = loaded.filter(s => s && s.id && s.id !== 'default' && s.createdAt).sort((a, b) => b.createdAt - a.createdAt);
             setSprints(loaded);
           } else {
             // 如果剛登入且沒有資料，可以選擇把 local 的塞進去，或給個預設
@@ -52,8 +62,8 @@ export default function SprintList() {
         try {
           const saved = localStorage.getItem('sprints');
           if (saved) {
-            // 過濾掉沒有 ID 的幽靈資料
-            const parsedSprints = JSON.parse(saved).filter((s: any) => s && s.id && s.id !== 'default');
+            // 過濾掉沒有 ID 的幽靈資料或缺乏建立時間的壞資料
+            const parsedSprints = JSON.parse(saved).filter((s: Sprint) => s && s.id && s.id !== 'default' && s.createdAt);
             setSprints(parsedSprints);
             // 同步寫回乾淨的資料
             localStorage.setItem('sprints', JSON.stringify(parsedSprints));
