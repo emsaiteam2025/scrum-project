@@ -52,7 +52,11 @@ export default function SprintList() {
         try {
           const saved = localStorage.getItem('sprints');
           if (saved) {
-            setSprints(JSON.parse(saved));
+            // 過濾掉沒有 ID 的幽靈資料
+            const parsedSprints = JSON.parse(saved).filter((s: any) => s && s.id && s.id !== 'default');
+            setSprints(parsedSprints);
+            // 同步寫回乾淨的資料
+            localStorage.setItem('sprints', JSON.stringify(parsedSprints));
           } else {
             setSprints([]);
           }
