@@ -95,7 +95,11 @@ export default function DailyScrum() {
                       ${activeDay === i ? 'ring-4 ring-[#e07a5f] scale-[1.02]' : ''}
                       `}
                   >
-                    <div className={`absolute top-3 right-3 flex items-center justify-center w-6 h-6 rounded border-2 ${isChecked ? 'bg-white border-white text-[#5b755e]' : 'border-[#8a7f72] bg-white'}`} onClick={(e) => toggleCheck(e, i)}>
+                    <div 
+                      className={`absolute top-3 right-3 flex items-center justify-center w-6 h-6 rounded border-2 z-20 cursor-pointer ${isChecked ? 'bg-white border-white text-[#5b755e]' : 'border-[#8a7f72] bg-white hover:border-[#5b755e]'}`} 
+                      onClick={(e) => toggleCheck(e, i)}
+                      title="標記這天為已完成"
+                    >
                       {isChecked && '✓'}
                     </div>
                     <div className={`font-bold text-lg z-10 transition-transform ${isChecked ? 'text-white' : 'text-[#4a7c59] group-hover:scale-110'}`}>
