@@ -26,7 +26,7 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
     const loadData = async () => {
       if (user) {
         try {
-          const docRef = doc(db, 'users', user.uid, 'sprints', sprintId);
+          const docRef = doc(db, 'sprints', sprintId);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists() && docSnap.data()[pageKey]) {
             setData({ ...initialData, ...docSnap.data()[pageKey] });
@@ -60,7 +60,7 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
     const handler = setTimeout(async () => {
       if (user) {
         try {
-          const docRef = doc(db, 'users', user.uid, 'sprints', sprintId);
+          const docRef = doc(db, 'sprints', sprintId);
           await setDoc(docRef, { [pageKey]: data }, { merge: true });
           console.log(`[Autosave] Cloud sync success: ${pageKey}`);
         } catch (error) {

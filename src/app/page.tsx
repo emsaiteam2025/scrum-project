@@ -2,12 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { db } from '@/lib/firebase';
-import { collection, doc, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, setDoc, deleteDoc, query, where } from 'firebase/firestore';
 
 interface Sprint {
   id: string;
   name: string;
   createdAt: number;
+  ownerId?: string;
+  collaborators?: { email: string; role: 'editor' | 'viewer' }[];
 }
 
 export default function SprintList() {
@@ -32,16 +34,20 @@ export default function SprintList() {
       setLoading(true);
       if (user) {
         try {
-          const sprintsRef = collection(db, 'users', user.uid, 'sprints');
-          const snapshot = await getDocs(sprintsRef);
-          if (!snapshot.empty) {
-            let loaded = snapshot.docs.map(doc => doc.data() as Sprint);
+          const sprintsRef = collection(db, 'sprints');
+          const qOwned = query(sprintsRef, where('ownerId', '==', user.uid));
+          const snapOwned = await getDocs(qOwned);
+          
+          // TODO: 這裡未來可擴充使用 email 搜尋 collaborators
+          // 目前先抓取自己建立的專案
+          let loaded = snapOwned.docs.map(doc => doc.data() as Sprint);
+          if (loaded.length > 0) {
             
             // 過濾並刪除壞掉的雲端資料
             const badDocs = loaded.filter(s => !s || !s.id || s.id === 'default' || !s.createdAt);
             for (const bad of badDocs) {
                try {
-                 await deleteDoc(doc(db, 'users', user.uid, 'sprints', bad.id || 'default'));
+                 await deleteDoc(doc(db, 'sprints', bad.id || 'default'));
                } catch(err) { console.error(err) }
             }
             
@@ -51,7 +57,7 @@ export default function SprintList() {
             // 如果剛登入且沒有資料，可以選擇把 local 的塞進去，或給個預設
             const initial = [{ id: `sprint-${Date.now()}`, name: '我的第一個 Sprint', createdAt: Date.now() }];
             setSprints(initial);
-            await setDoc(doc(sprintsRef, initial[0].id), initial[0]);
+            await setDoc(doc(db, 'sprints', initial[0].id), { ...initial[0], ownerId: user.uid, collaborators: [] });
           }
         } catch (error) {
           console.error("載入專案失敗:", error);
@@ -85,14 +91,16 @@ export default function SprintList() {
     const newSprint: Sprint = {
       id: `sprint-${Date.now()}`,
       name: '未命名的新 Sprint',
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      ownerId: user ? user.uid : undefined,
+      collaborators: []
     };
     const updated = [newSprint, ...sprints];
     setSprints(updated);
     setEditingId(newSprint.id);
 
     if (user) {
-      const sprintRef = doc(db, 'users', user.uid, 'sprints', newSprint.id);
+      const sprintRef = doc(db, 'sprints', newSprint.id);
       await setDoc(sprintRef, newSprint);
     } else {
       localStorage.setItem('sprints', JSON.stringify(updated));
@@ -115,7 +123,7 @@ export default function SprintList() {
       
       if (user) {
         try {
-          await deleteDoc(doc(db, 'users', user.uid, 'sprints', id));
+          await deleteDoc(doc(db, 'sprints', id));
         } catch (err) {
           console.error("刪除雲端資料失敗:", err);
         }
@@ -141,7 +149,7 @@ export default function SprintList() {
 
     if (user) {
       try {
-        await setDoc(doc(db, 'users', user.uid, 'sprints', id), updatedData, { merge: true });
+        await setDoc(doc(db, 'sprints', id), updatedData, { merge: true });
       } catch (err) {
         console.error("更新雲端名稱失敗:", err);
       }
