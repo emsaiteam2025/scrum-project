@@ -54,11 +54,26 @@ export default function Backlog() {
 
         let planningData = null;
         
-        // 為了避免重複匯入或報錯，我們先從 localStorage 同步讀取試試
-        // (如果你有登入，Firebase 也會同步寫一份到 user 的雲端，我們可以直接查雲端，但為了快速可用，這裡兩邊都抓)
-        const localSaved = localStorage.getItem(`sprint_${sprintId}_planning`);
-        if (localSaved) {
-           planningData = JSON.parse(localSaved);
+        // 嘗試從 Firebase 讀取
+        const { getAuth } = await import('firebase/auth');
+        const { doc, getDoc } = await import('firebase/firestore');
+        const { db, app } = await import('@/lib/firebase');
+        const auth = getAuth(app);
+        
+        if (auth.currentUser) {
+          const docRef = doc(db, 'users', auth.currentUser.uid, 'sprints', sprintId);
+          const snap = await getDoc(docRef);
+          if (snap.exists() && snap.data().planning) {
+            planningData = snap.data().planning;
+          }
+        }
+        
+        // 如果 Firebase 沒有資料或是沒登入，退回從 localStorage 讀取
+        if (!planningData) {
+          const localSaved = localStorage.getItem(`sprint_${sprintId}_planning`);
+          if (localSaved) {
+            planningData = JSON.parse(localSaved);
+          }
         }
 
         if (planningData && planningData.whats && Array.isArray(planningData.whats)) {
