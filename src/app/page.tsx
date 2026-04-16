@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { db } from '@/lib/firebase';
-import { collection, doc, getDocs, setDoc, deleteDoc, query, where } from 'firebase/firestore';
+import { collection, doc, getDocs, getDoc, setDoc, deleteDoc, query, where } from 'firebase/firestore';
 
 interface Sprint {
   id: string;
@@ -33,23 +33,39 @@ export default function SprintList() {
 
   useEffect(() => {
     // 檢查是否有網址參數，若有且載入完成，直接導向
-    if (!loading && !authLoading) {
-      const params = new URLSearchParams(window.location.search);
-      const targetSprintId = params.get('sprint');
-      
-      if (targetSprintId) {
-        const targetSprint = sprints.find(s => s.id === targetSprintId);
-        if (targetSprint) {
-          // 有權限且找到該專案，自動進入
-          selectSprint(targetSprint.id, targetSprint.name);
-        } else if (user) {
-          // 已經登入，但是找不到專案 (可能沒權限)
-          alert('找不到此專案或您沒有權限存取！請確認專案擁有者是否已將您加入協作者。');
-          // 移除網址參數以避免重複彈出
-          window.history.replaceState({}, '', '/');
+    const checkLink = async () => {
+      if (!loading && !authLoading) {
+        const params = new URLSearchParams(window.location.search);
+        const targetSprintId = params.get('sprint');
+        
+        if (targetSprintId) {
+          let targetSprint = sprints.find(s => s.id === targetSprintId);
+          
+          if (!targetSprint) {
+            // 從 Firebase 單獨抓取該專案 (給擁有連結的人檢視)
+            try {
+              const docRef = doc(db, 'sprints', targetSprintId);
+              const snap = await getDoc(docRef);
+              if (snap.exists()) {
+                targetSprint = snap.data() as Sprint;
+              }
+            } catch (err) {
+              console.error(err);
+            }
+          }
+
+          if (targetSprint) {
+            // 找到該專案，自動進入 (設定一個檢視者標記，可供內部後續擴充權限判斷)
+            localStorage.setItem('sprintRole_' + targetSprintId, 'viewer_via_link');
+            selectSprint(targetSprint.id, targetSprint.name);
+          } else {
+            alert('找不到此專案！請確認連結是否正確。');
+            window.history.replaceState({}, '', '/');
+          }
         }
       }
-    }
+    };
+    checkLink();
   }, [sprints, loading, authLoading, user]);
 
   useEffect(() => {
@@ -419,7 +435,7 @@ export default function SprintList() {
                       onClick={() => {
                         const url = `${window.location.origin}/?sprint=${shareModalSprint.id}`;
                         navigator.clipboard.writeText(url);
-                        alert('已複製連結！將此連結傳給擁有權限的協作者，他們點擊即可直接進入。');
+                        alert('已複製連結！取得此連結的人將可以直接進入檢視此專案內容。');
                       }}
                       className="text-xs bg-white border-2 border-[#5b755e] px-2 py-1 rounded-lg text-[#5b755e] hover:bg-[#5b755e] hover:text-white transition-colors shadow-sm"
                     >
