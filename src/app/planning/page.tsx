@@ -180,33 +180,37 @@ export default function Home() {
           
           <div className="p-6 space-y-6">
             {/* 基礎資訊 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="flex flex-col gap-2">
-                <label className="font-bold text-[#6b5e50]">目的</label>
-                <div className="px-4 py-3 bg-[#e8e4d9] border-2 border-[#b5a695] rounded-xl text-[#3e362e] shadow-inner font-medium">
-                  建立共識並敲定行動計畫
+            <div className="flex flex-col lg:flex-row gap-6">
+              {/* 左側 3 個欄位 */}
+              <div className="flex-1 flex flex-col gap-6">
+                <div className="flex flex-col gap-2">
+                  <label className="font-bold text-[#6b5e50]">目的</label>
+                  <div className="px-4 py-3 bg-[#e8e4d9] border-2 border-[#b5a695] rounded-xl text-[#3e362e] shadow-inner font-medium">
+                    建立共識並敲定行動計畫
+                  </div>
+                </div>
+                
+                <div className="flex flex-col gap-2">
+                  <label className="font-bold text-[#6b5e50]">時間限制 (TIME)</label>
+                  <select className="px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]" value={data.timeLimit} onChange={e => updateData({ timeLimit: e.target.value })}> 
+                    <option value="1">1 週 (≤ 2 小時)</option>
+                    <option value="2">2 週 (≤ 4 小時)</option>
+                    <option value="3">3 週 (≤ 6 小時)</option>
+                    <option value="4">4 週 (≤ 8 小時)</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="font-bold text-[#6b5e50]">開始日</label>
+                  <input type="date" value={data.startDate} onChange={e => updateData({ startDate: e.target.value })} className="px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]" />
                 </div>
               </div>
-              
-              <div className="flex flex-col gap-2">
-                <label className="font-bold text-[#6b5e50]">時間限制 (TIME)</label>
-                <select className="px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]" value={data.timeLimit} onChange={e => updateData({ timeLimit: e.target.value })}> 
-                  <option value="1">1 週 (≤ 2 小時)</option>
-                  <option value="2">2 週 (≤ 4 小時)</option>
-                  <option value="3">3 週 (≤ 6 小時)</option>
-                  <option value="4">4 週 (≤ 8 小時)</option>
-                </select>
-              </div>
 
-              <div className="flex flex-col gap-2">
-                <label className="font-bold text-[#6b5e50]">開始日</label>
-                <input type="date" value={data.startDate} onChange={e => updateData({ startDate: e.target.value })} className="px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]" />
-              </div>
-
-              <div className="flex flex-col gap-2">
+              {/* 右側：與會人 */}
+              <div className="flex-1 flex flex-col gap-2">
                 <label className="font-bold text-[#6b5e50]">與會人</label>
-                <div className="px-4 py-3 bg-[#e8e4d9] border-2 border-[#b5a695] rounded-xl text-[#3e362e] shadow-inner font-medium">
-                  <div className="flex flex-col gap-3">
+                <div className="px-4 py-3 bg-[#e8e4d9] border-2 border-[#b5a695] rounded-xl text-[#3e362e] shadow-inner font-medium flex-1">
+                  <div className="flex flex-col gap-4 justify-around h-full">
                     <div className="flex items-center gap-2">
                       <div className="w-32 flex-shrink-0"><ScrumTooltip keyword="PO" text="Product Owner" /></div>
                       <span>:</span>
