@@ -27,7 +27,8 @@ export default function Backlog() {
     sprintDays: 30 as number | string,
     tasks: initialTasks,
     sprintGoal: '',
-    stakeholders: ''
+    stakeholders: '',
+    devsList: [] as string[]
   });
 
   const sprintDays = data.sprintDays;
@@ -74,20 +75,23 @@ export default function Backlog() {
           if (localStr) planningData = JSON.parse(localStr);
         }
 
-        if (planningData && planningData.whats) {
+        if (planningData) {
+          if (planningData.devs) {
+            const devsArray = planningData.devs.split(/[,、，]/).map((d: string) => d.trim()).filter((d: string) => d);
+            updateData({ devsList: devsArray });
+          }
+
+          if (planningData.whats) {
           const whats = planningData.whats.filter((w: {id: string, text: string}) => w.text && w.text.trim() !== '');
           
           setTasks(prev => {
             let newTasks = [...prev];
-            let changed = false;
-            
-            // 1. 同步 Planning 新增或修改的 WHAT
+                        // 1. 同步 Planning 新增或修改的 WHAT
             whats.forEach((w: {id: string, text: string}) => {
               const existingIndex = newTasks.findIndex(t => t.id === w.id);
               if (existingIndex >= 0) {
                 if (newTasks[existingIndex].title !== w.text) {
                   newTasks[existingIndex] = { ...newTasks[existingIndex], title: w.text };
-                  changed = true;
                 }
               } else {
                 newTasks.push({
@@ -96,7 +100,6 @@ export default function Backlog() {
                   status: 'pbi',
                   title: w.text
                 });
-                changed = true;
               }
             });
 
@@ -105,7 +108,6 @@ export default function Backlog() {
             const tasksToRemove = newTasks.filter(t => t.type === 'pbi' && !whatIds.includes(t.id));
             if (tasksToRemove.length > 0) {
               newTasks = newTasks.filter(t => t.type !== 'pbi' || whatIds.includes(t.id));
-              changed = true;
             }
 
             // 將新進來的 PBI 與舊的任務合併 (不強制覆蓋使用者在 Backlog 自訂的排序)
@@ -126,6 +128,7 @@ export default function Backlog() {
             });
             
             // 由於陣列順序每次 mapping 都可能導致 stringify 不一致，改用比對內容核心屬性來判斷是否有實際變更
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const hashTask = (t: any) => `${t.id}|${t.title}|${t.desc}|${t.status}|${t.role}|${t.time}|${t.pbiId}`;
             const prevHash = prev.map(hashTask).sort().join(',');
             const mergedHash = mergedTasks.map(hashTask).sort().join(',');
@@ -136,7 +139,8 @@ export default function Backlog() {
             
             return prev;
           });
-        }
+        } // end of if (planningData.whats)
+        } // end of if (planningData)
       } catch (err) {
         console.error("Sync PBI failed:", err);
       }
@@ -431,13 +435,21 @@ export default function Backlog() {
               {task.type === 'task' && (
                 <>
                 <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    value={task.role || ''} 
-                    onChange={(e) => updateTask(task.id, 'role', e.target.value)}
-                    className="w-1/2 text-xs p-2 border-2 border-[#b5a695] rounded focus:outline-none focus:border-[#5b755e]"
-                    placeholder="負責人"
-                  />
+                  <div className="w-1/2 relative flex items-center">
+                    <input 
+                      type="text" 
+                      list={`devs-list-${task.id}`}
+                      value={task.role || ''} 
+                      onChange={(e) => updateTask(task.id, 'role', e.target.value)}
+                      className="w-full text-xs p-2 border-2 border-[#b5a695] rounded focus:outline-none focus:border-[#5b755e]"
+                      placeholder="負責人"
+                    />
+                    <datalist id={`devs-list-${task.id}`}>
+                      {data.devsList && data.devsList.map((dev: string) => (
+                        <option key={dev} value={dev} />
+                      ))}
+                    </datalist>
+                  </div>
                   <input 
                     type="text" 
                     value={task.time || ''} 
