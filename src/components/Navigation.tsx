@@ -33,7 +33,7 @@ export default function Navigation() {
         >
           <span>📚</span> 回到專案大廳 (Sprint 清單)
         </Link>
-        <div className="text-[10px] font-bold text-[#b5a695] ml-2 px-2 py-1 bg-[#fffdf9] rounded border border-[#e8d5b5]">v1.0.28</div>
+        <div className="text-[10px] font-bold text-[#b5a695] ml-2 px-2 py-1 bg-[#fffdf9] rounded border border-[#e8d5b5]">v1.0.29</div>
         {currentSprintName && (
           <div className="text-sm font-bold text-[#6b5e50] bg-[#fffdf9] px-4 py-2 rounded-xl border-2 border-[#b5a695] shadow-sm truncate max-w-[300px]">
             當前專案：{currentSprintName}
