@@ -23,7 +23,7 @@ export default function Backlog() {
   const [apiKey, setApiKey] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
 
-  const { data, updateData, loading } = useAutoSave('backlog', {
+  const { data, updateData, loading, forceSave } = useAutoSave('backlog', {
     sprintDays: 30 as number | string,
     tasks: initialTasks,
     sprintGoal: '',
@@ -448,6 +448,7 @@ export default function Backlog() {
                       updateTask(task.id, 'title', '未命名項目');
                     }
                     setEditingTaskId(null);
+                    setTimeout(() => forceSave && forceSave(), 50); // 確保狀態更新後立即觸發存檔
                   }}
                   className="flex-1 bg-[#8fb996] text-white text-xs font-bold py-2 rounded hover:bg-[#5b755e] transition-colors"
                 >
@@ -643,7 +644,7 @@ export default function Backlog() {
                                         rows={3}
                                       />
                                       <div className="flex justify-end gap-2 mt-2">
-                                        <button onClick={() => setEditingTaskId(null)} className="text-xs font-bold bg-[#5b755e] text-white px-3 py-1 rounded hover:bg-[#4a614d] transition-colors">完成</button>
+                                        <button onClick={() => { setEditingTaskId(null); setTimeout(() => forceSave && forceSave(), 50); }} className="text-xs font-bold bg-[#5b755e] text-white px-3 py-1 rounded hover:bg-[#4a614d] transition-colors">完成</button>
                                       </div>
                                     </div>
                                   ) : (
