@@ -76,7 +76,6 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
     
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }
   }, [user, authLoading, sprintId, pageKey]);
 
   const [enableSave, setEnableSave] = useState(false);
