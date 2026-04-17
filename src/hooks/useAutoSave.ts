@@ -21,7 +21,20 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
 
   // 載入資料
   useEffect(() => {
-    if (authLoading || !sprintId) return;
+    if (authLoading) return;
+    
+    // 如果沒有 sprintId (例如從首頁剛進來還沒設定好)，也要停止 loading 狀態，不然畫面會卡住
+    if (!sprintId) {
+      if (!loading) return; // 已經停止 loading 就不重複
+      const timer = setTimeout(() => {
+        // 如果 1 秒後還是沒有 sprintId，就強制解除 loading 以免卡住
+        if (!localStorage.getItem('currentSprintId')) {
+           setLoading(false);
+           isFirstLoad.current = false;
+        }
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
 
     const loadData = async () => {
       const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
