@@ -142,6 +142,11 @@ export default function Backlog() {
   }, [loading]);
 
 
+  useEffect(() => {
+    const savedKey = localStorage.getItem('openai_api_key');
+    if (savedKey) setApiKey(savedKey);
+  }, []);
+
   const handleAiGenerateTasks = async (pbiId: string, pbiTitle: string) => {
     if (!apiKey) {
       alert('⚠️ 請先於 Sprint Planning 頁面設定 OpenAI API Key，才能啟動 AI 拆解任務功能！');
