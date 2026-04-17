@@ -16,7 +16,7 @@ export default function DailyScrum() {
     dailyNotesQ3: {} as Record<number, string>
   });
 
-  const completedDays = data.completedDays;
+  const completedDays = data.completedDays || [];
   const dailyNotes = data.dailyNotes || {};
   const dailyNotesQ1 = data.dailyNotesQ1 || {};
   const dailyNotesQ2 = data.dailyNotesQ2 || {};
@@ -30,7 +30,7 @@ export default function DailyScrum() {
     setSprintDays(daysCount);
     
     // 若初始化狀態為空或長度不對，則初始化
-    if (completedDays.length !== daysCount && !loading) {
+    if ((!completedDays || completedDays.length !== daysCount) && !loading) {
       updateData({ completedDays: Array(daysCount).fill(false) });
     }
       // eslint-disable-next-line react-hooks/exhaustive-deps
