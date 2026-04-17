@@ -167,7 +167,11 @@ export default function Backlog() {
             generationConfig: { temperature: 0.7 }
           })
         });
-        if (!response.ok) throw new Error('Gemini API 請求失敗');
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          console.error("Gemini API Error details:", errData);
+          throw new Error('Gemini API 請求失敗: ' + (errData?.error?.message || response.statusText));
+        }
         const data = await response.json();
         aiContent = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       } else {
