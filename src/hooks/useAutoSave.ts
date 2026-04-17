@@ -23,16 +23,12 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
   useEffect(() => {
     if (authLoading) return;
     
-    // 如果沒有 sprintId (例如從首頁剛進來還沒設定好)，也要停止 loading 狀態，不然畫面會卡住
+    // 如果沒有 sprintId，我們給它一個極短的等待時間看會不會抓到
     if (!sprintId) {
-      if (!loading) return; // 已經停止 loading 就不重複
       const timer = setTimeout(() => {
-        // 如果 1 秒後還是沒有 sprintId，就強制解除 loading 以免卡住
-        if (!localStorage.getItem('currentSprintId')) {
-           setLoading(false);
-           isFirstLoad.current = false;
-        }
-      }, 1000);
+         setLoading(false);
+         isFirstLoad.current = false;
+      }, 300);
       return () => clearTimeout(timer);
     }
 
