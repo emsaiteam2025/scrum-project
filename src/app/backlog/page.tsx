@@ -20,6 +20,8 @@ const initialTasks: Task[] = [];
 export default function Backlog() {
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState('');
+  const [isAiLoading, setIsAiLoading] = useState(false);
 
   const { data, updateData, loading } = useAutoSave('backlog', {
     sprintDays: 30 as number | string,
@@ -44,65 +46,162 @@ export default function Backlog() {
     }
   }, [sprintDays]);
 
-  // 初始化時，如果看板是空的，自動從 Planning 頁面的 WHAT 載入 PBI
+  
   useEffect(() => {
-    if (loading || tasks.length > 0) return;
+    if (loading) return;
 
-    const loadWhatsFromPlanning = async () => {
+    const syncWhatsFromPlanning = async () => {
       try {
         const sprintId = localStorage.getItem('currentSprintId');
         if (!sprintId) return;
 
-        let planningData = null;
-        
-        // 嘗試從 Firebase 讀取
         const { getAuth } = await import('firebase/auth');
-        const { doc, getDoc } = await import('firebase/firestore');
+        const { doc, getDoc, setDoc } = await import('firebase/firestore');
         const { db, app } = await import('@/lib/firebase');
         const auth = getAuth(app);
+
+        // 如果是分享連結的檢視者，跳過從 users 讀取
+        const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
         
-        if (auth.currentUser) {
-          const docRef = doc(db, 'users', auth.currentUser.uid, 'sprints', sprintId);
+        let planningData = null;
+        if (auth.currentUser || isPublicViewer) {
+          const docRef = doc(db, 'sprints', sprintId);
           const snap = await getDoc(docRef);
           if (snap.exists() && snap.data().planning) {
             planningData = snap.data().planning;
           }
-        }
-        
-        // 如果 Firebase 沒有資料或是沒登入，退回從 localStorage 讀取
-        if (!planningData) {
-          const localSaved = localStorage.getItem(`sprint_${sprintId}_planning`);
-          if (localSaved) {
-            planningData = JSON.parse(localSaved);
-          }
+        } else {
+          const localStr = localStorage.getItem(`sprint_${sprintId}_planning`);
+          if (localStr) planningData = JSON.parse(localStr);
         }
 
-        if (planningData && planningData.whats && Array.isArray(planningData.whats)) {
-          // 過濾掉空字串的 WHAT
-          const validWhats = planningData.whats.filter((w: { text?: string }) => w.text && w.text.trim().length > 0);
+        if (planningData && planningData.whats) {
+          const whats = planningData.whats.filter((w: any) => w.text && w.text.trim() !== '');
           
-          if (validWhats.length > 0) {
-            const newPbis: Task[] = validWhats.map((w: { text: string }, index: number) => ({
-              id: `pbi-auto-${Date.now()}-${index}`,
-              type: 'pbi',
-              status: 'pbi',
-              title: w.text.trim(),
-              desc: '',
-              role: '',
-              time: ''
-            }));
+          setTasks(prev => {
+            let newTasks = [...prev];
+            let changed = false;
             
-            // 使用 setTasks 寫入 (會自動儲存)
-            setTasks(newPbis);
-          }
+            // 1. 同步 Planning 新增或修改的 WHAT
+            whats.forEach((w: any, index: number) => {
+              const existingIndex = newTasks.findIndex(t => t.id === w.id);
+              if (existingIndex >= 0) {
+                if (newTasks[existingIndex].title !== w.text) {
+                  newTasks[existingIndex] = { ...newTasks[existingIndex], title: w.text };
+                  changed = true;
+                }
+              } else {
+                newTasks.push({
+                  id: w.id,
+                  type: 'pbi',
+                  status: 'pbi',
+                  title: w.text
+                });
+                changed = true;
+              }
+            });
+
+            // 2. 移除在 Planning 中已被刪除的 WHAT
+            const whatIds = whats.map((w: any) => w.id);
+            const tasksToRemove = newTasks.filter(t => t.type === 'pbi' && !whatIds.includes(t.id));
+            if (tasksToRemove.length > 0) {
+              newTasks = newTasks.filter(t => t.type !== 'pbi' || whatIds.includes(t.id));
+              changed = true;
+            }
+
+            // 3. 確保順序與 Planning 的 WHAT 一致
+            const pbis = newTasks.filter(t => t.type === 'pbi');
+            const others = newTasks.filter(t => t.type !== 'pbi');
+            pbis.sort((a, b) => {
+              const idxA = whats.findIndex((w: any) => w.id === a.id);
+              const idxB = whats.findIndex((w: any) => w.id === b.id);
+              return idxA - idxB;
+            });
+            
+            const orderedTasks = [...pbis, ...others];
+            
+            // 檢查順序是否改變
+            const orderChanged = orderedTasks.map(t=>t.id).join(',') !== newTasks.map(t=>t.id).join(',');
+
+            if (changed || orderChanged) {
+              return orderedTasks;
+            }
+            return prev;
+          });
         }
       } catch (err) {
-        console.error("Auto load PBI failed:", err);
+        console.error("Sync PBI failed:", err);
       }
     };
     
-    loadWhatsFromPlanning();
-  }, [loading, tasks.length]); // 僅在 loading 結束時觸發一次
+    syncWhatsFromPlanning();
+    
+    // 設定每 5 秒同步一次以達成類似即時的效果
+    const interval = setInterval(syncWhatsFromPlanning, 5000);
+    return () => clearInterval(interval);
+  }, [loading]);
+
+
+  const handleAiGenerateTasks = async (pbiId: string, pbiTitle: string) => {
+    if (!apiKey) {
+      alert('⚠️ 請先於 Sprint Planning 頁面設定 OpenAI API Key，才能啟動 AI 拆解任務功能！');
+      return;
+    }
+    setIsAiLoading(true);
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: "你是一個專業的 Scrum Master 與資深開發者。請幫我將以下 Product Backlog Item (PBI) 拆解成 3 到 5 個具體的 Task (待辦任務)。以 JSON 陣列格式回傳，每個任務包含 title (標題) 與 desc (簡短描述)。不要回傳 Markdown 標籤，直接回傳 JSON 陣列即可。例如：[{\"title\":\"建立資料表\", \"desc\":\"建立 users 資料表\"}]"
+            },
+            {
+              role: "user",
+              content: `PBI: ${pbiTitle}`
+            }
+          ],
+          temperature: 0.7,
+        })
+      });
+
+      if (!response.ok) throw new Error('API 請求失敗');
+      
+      const data = await response.json();
+      let aiContent = data.choices[0].message.content.trim();
+      
+      // 過濾 Markdown 語法 (以防 AI 還是輸出了)
+      aiContent = aiContent.replace(/^\s*```(json)?/m, '').replace(/```\s*$/m, '');
+      
+      const parsedTasks = JSON.parse(aiContent);
+      
+      setTasks((prev) => {
+        const newTasks = parsedTasks.map((t: any, i: number) => ({
+          id: `task-${Date.now()}-${i}`,
+          type: 'task',
+          status: 'todo',
+          title: t.title,
+          desc: t.desc,
+          role: '',
+          time: '',
+          pbiId: pbiId
+        }));
+        return [...newTasks, ...prev];
+      });
+      
+    } catch (err) {
+      console.error(err);
+      alert('產生失敗，請確認 API Key 是否有效。');
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
 
   const handleDaysChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -566,12 +665,19 @@ export default function Backlog() {
                      </div>
 
                      <div className="flex-1 p-2 border-r-4 border-[#5b755e] bg-[#fceded]/10 flex flex-col min-w-[200px]" onDragOver={onDragOver} onDrop={(e) => onDrop(e, 'todo', undefined, pbi.id)}>
-                       <div className="flex justify-end mb-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                       <div className="flex justify-end gap-1 mb-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button 
+                             onClick={() => handleAiGenerateTasks(pbi.id, pbi.title)}
+                             disabled={isAiLoading}
+                             className="text-xs font-bold bg-white border border-[#a28bd4] text-[#a28bd4] px-2 py-1 rounded hover:bg-[#a28bd4] hover:text-white transition-colors shadow-sm disabled:opacity-50"
+                          >
+                             🤖 AI 拆解
+                          </button>
                           <button onClick={() => {
                              const newId = `task-${Date.now()}`;
                              setTasks((prev) => [{ id: newId, type: 'task', status: 'todo', title: '', desc: '', role: '', time: '', pbiId: pbi.id }, ...prev]);
                              setEditingTaskId(newId);
-                          }} className="text-xs font-bold bg-white border border-[#e6b1b1] text-[#c96262] px-2 py-1 rounded hover:bg-[#c96262] hover:text-white transition-colors shadow-sm">➕ 建立對齊此PBI的任務</button>
+                          }} className="text-xs font-bold bg-white border border-[#e6b1b1] text-[#c96262] px-2 py-1 rounded hover:bg-[#c96262] hover:text-white transition-colors shadow-sm">➕ 建立任務</button>
                        </div>
                        <div className="flex flex-col gap-2 flex-1">
                          {renderTasks('todo', pbi.id)}
