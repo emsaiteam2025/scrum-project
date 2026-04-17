@@ -90,7 +90,7 @@ export default function Backlog() {
           if (!isPublicViewer || auth.currentUser) {
           setTasks(prev => {
             let newPbis = prev.filter(t => t.type === 'pbi');
-            let tasksList = prev.filter(t => t.type === 'task');
+            const tasksList = prev.filter(t => t.type === 'task');
             
             // 1. 同步 Planning 新增或修改的 WHAT (只針對 PBI)
             whats.forEach((w: {id: string, text: string}) => {
@@ -114,7 +114,7 @@ export default function Backlog() {
             newPbis = newPbis.filter(t => whatIds.includes(t.id));
 
             // 將同步好的 PBI 與原本的 Tasks 合併
-            let mergedTasks = [...newPbis, ...tasksList];
+            const mergedTasks = [...newPbis, ...tasksList];
             
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const hashTask = (t: any) => `${t.id}|${t.title}|${t.desc}|${t.status}|${t.role}|${t.time}|${t.pbiId}`;
