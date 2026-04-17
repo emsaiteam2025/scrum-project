@@ -33,11 +33,9 @@ export default function Backlog() {
   const sprintDays = data.sprintDays;
   const tasks = data.tasks;
   const setTasks = (valOrFn: Task[] | ((prev: Task[]) => Task[])) => {
-    if (typeof valOrFn === 'function') {
-      updateData({ tasks: valOrFn(data.tasks) });
-    } else {
-      updateData({ tasks: valOrFn });
-    }
+    updateData((prevData: any) => ({
+      tasks: typeof valOrFn === 'function' ? valOrFn(prevData.tasks) : valOrFn
+    }));
   };
 
   useEffect(() => {

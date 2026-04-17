@@ -82,8 +82,11 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
     return () => clearTimeout(handler);
   }, [data, user, loading, sprintId, pageKey]);
 
-  const updateData = (updates: Partial<T>) => {
-    setData(prev => ({ ...prev, ...updates }));
+  const updateData = (updates: Partial<T> | ((prev: T) => Partial<T>)) => {
+    setData(prev => {
+      const newUpdates = typeof updates === 'function' ? updates(prev) : updates;
+      return { ...prev, ...newUpdates };
+    });
   };
 
   return { data, updateData, loading };
