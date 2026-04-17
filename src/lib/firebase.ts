@@ -18,5 +18,9 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
+// 強制每次登入都跳出選擇帳號的視窗，避免自動登入預設帳號
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
 
 export { app, auth, db, googleProvider, signInWithPopup, signOut };
