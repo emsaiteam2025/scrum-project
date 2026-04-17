@@ -468,8 +468,8 @@ export default function Backlog() {
             </div>
           ) : (
             <>
-              <div className="font-bold text-[15px] text-[#3e362e] mb-2 leading-tight pr-6">{task.title}</div>
-              {task.desc && <div className="text-[13px] text-[#6b5e50] leading-relaxed mb-2">{task.desc}</div>}
+              <div className="font-bold text-[15px] text-[#3e362e] mb-2 leading-tight pr-6 break-all">{task.title}</div>
+              {task.desc && <div className="text-[13px] text-[#6b5e50] leading-relaxed mb-2 break-words whitespace-pre-wrap">{task.desc}</div>}
               {(task.role || task.time) && (
                 <div className="mt-auto pt-2 flex items-center justify-between border-t border-[#e8d5b5]">
                   {task.role && <div className="text-[11px] font-bold text-[#5b755e] bg-[#e8eedd] px-2 py-1 rounded-md border border-[#a5c2a8]">{task.role}</div>}
@@ -648,8 +648,8 @@ export default function Backlog() {
                                     </div>
                                   ) : (
                                     <>
-                                      <h4 className="text-sm font-bold text-[#3e362e] mb-1">{task.title || '(未命名項目)'}</h4>
-                                      {task.desc && <p className="text-xs text-[#6b5e50] line-clamp-3 mb-2 whitespace-pre-wrap">{task.desc}</p>}
+                                      <h4 className="text-sm font-bold text-[#3e362e] mb-1 break-all">{task.title || '(未命名項目)'}</h4>
+                                      {task.desc && <p className="text-xs text-[#6b5e50] line-clamp-3 mb-2 whitespace-pre-wrap break-words">{task.desc}</p>}
                                     </>
                                   )}
                                 </div>
