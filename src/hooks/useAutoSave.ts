@@ -23,13 +23,19 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
   useEffect(() => {
     if (authLoading) return;
     
-    // 如果沒有 sprintId，我們給它一個極短的等待時間看會不會抓到
-    if (!sprintId) {
-      const timer = setTimeout(() => {
-         setLoading(false);
-         isFirstLoad.current = false;
-      }, 300);
-      return () => clearTimeout(timer);
+    // 防呆：如果 3 秒內都還沒完成載入，強制結束 loading 狀態，避免畫面永遠卡死
+    const fallbackTimer = setTimeout(() => {
+      setLoading(false);
+      isFirstLoad.current = false;
+      console.warn("載入資料逾時，已強制解除 Loading 狀態！");
+    }, 3000);
+    
+    // 如果沒有 sprintId (或是字串 null/undefined)，提早結束 loading
+    if (!sprintId || sprintId === 'null' || sprintId === 'undefined') {
+      clearTimeout(fallbackTimer);
+      setLoading(false);
+      isFirstLoad.current = false;
+      return;
     }
 
     const loadData = async () => {
@@ -55,11 +61,15 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
           console.error("讀取本地資料失敗:", error);
         }
       }
+      
+      clearTimeout(fallbackTimer);
       setLoading(false);
-      // 給予一點延遲，避免載入的初始設定觸發第一次的 autosave
-
+      isFirstLoad.current = false;
     };
+    
     loadData();
+    
+    return () => clearTimeout(fallbackTimer);
   }, [user, authLoading, sprintId, pageKey]);
 
   const [enableSave, setEnableSave] = useState(false);
@@ -122,6 +132,15 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
   };
 
   const updateData = (updates: Partial<T> | ((prev: T) => Partial<T>)) => {
+    if (sprintId) {
+      const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
+      // 如果是唯讀訪客，不允許修改本地 state (禁止編輯)
+      if (isPublicViewer && !user) {
+        alert('您目前為檢視者模式，無法編輯此專案！');
+        return;
+      }
+    }
+
     setData(prev => {
       const newUpdates = typeof updates === 'function' ? updates(prev) : updates;
       return { ...prev, ...newUpdates };
