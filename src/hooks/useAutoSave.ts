@@ -24,7 +24,9 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
     if (authLoading || !sprintId) return;
 
     const loadData = async () => {
-      if (user) {
+      const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
+      
+      if (user || isPublicViewer) {
         try {
           const docRef = doc(db, 'sprints', sprintId);
           const docSnap = await getDoc(docRef);
@@ -58,6 +60,11 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
     if (loading || isFirstLoad.current || !sprintId) return;
 
     const handler = setTimeout(async () => {
+      const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
+      if (isPublicViewer && !user) {
+        return; // 公開檢視者（未登入）不允許寫入雲端
+      }
+
       if (user) {
         try {
           const docRef = doc(db, 'sprints', sprintId);
