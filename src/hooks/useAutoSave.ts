@@ -23,14 +23,9 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
   useEffect(() => {
     if (!loading) return;
     const fallbackTimer = setTimeout(() => {
-      setLoading((prev) => {
-        if (prev) {
-          console.warn("載入資料逾時，已強制解除 Loading 狀態！");
-          isFirstLoad.current = false;
-          return false;
-        }
-        return prev;
-      });
+      console.warn("載入資料逾時，已強制解除 Loading 狀態！");
+      isFirstLoad.current = false;
+      setLoading(false);
     }, 3000);
     return () => clearTimeout(fallbackTimer);
   }, [loading]);
