@@ -57,16 +57,27 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
       }
       setLoading(false);
       // 給予一點延遲，避免載入的初始設定觸發第一次的 autosave
-      setTimeout(() => {
-        isFirstLoad.current = false;
-      }, 500);
+
     };
     loadData();
   }, [user, authLoading, sprintId, pageKey]);
 
+  const [enableSave, setEnableSave] = useState(false);
+
+  // 解除首次載入鎖定
+  useEffect(() => {
+    if (!loading && isFirstLoad.current) {
+      const timer = setTimeout(() => {
+        isFirstLoad.current = false;
+        setEnableSave(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [loading]);
+
   // 自動儲存
   useEffect(() => {
-    if (loading || isFirstLoad.current || !sprintId) return;
+    if (loading || !enableSave || !sprintId) return;
 
     const handler = setTimeout(async () => {
       const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
