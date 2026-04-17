@@ -13,8 +13,8 @@ export async function POST(req: Request) {
     let aiContent = '';
 
     if (apiKey.startsWith('AIza')) {
-      // 使用 Gemini 3.1 Flash (經由 OpenAI 相容端點，不受瀏覽器 CORS 限制)
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+      // 嘗試使用 gemini-3.1-flash
+      let response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -27,9 +27,29 @@ export async function POST(req: Request) {
         })
       });
 
+      // 如果 3.1-flash 尚未全面開放導致 Not Found，自動降級至 1.5-flash
+      if (response.status === 404 || response.status === 400) {
+        response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: "gemini-1.5-flash",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.7
+          })
+        });
+      }
+
       if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err?.error?.message || response.statusText || 'Unknown Gemini API Error');
+        let errMessage = response.statusText;
+        try {
+          const err = await response.json();
+          errMessage = err?.error?.message || err?.error || response.statusText;
+        } catch(e) {}
+        throw new Error(errMessage || 'Unknown Gemini API Error');
       }
       const data = await response.json();
       aiContent = data.choices?.[0]?.message?.content || '';
@@ -52,8 +72,12 @@ export async function POST(req: Request) {
       });
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err?.error?.message || response.statusText || 'Unknown OpenAI API Error');
+        let errMessage = response.statusText;
+        try {
+          const err = await response.json();
+          errMessage = err?.error?.message || response.statusText;
+        } catch(e) {}
+        throw new Error(errMessage || 'Unknown OpenAI API Error');
       }
       const data = await response.json();
       aiContent = data.choices?.[0]?.message?.content || '';
