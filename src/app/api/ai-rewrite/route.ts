@@ -9,7 +9,7 @@ export async function POST(req: Request) {
     }
 
     let prompt = '';
-    const fieldNameMap: any = {
+    const fieldNameMap: Record<string, string> = {
       'WHY': 'Sprint Goal (為什麼要做)',
       'WHAT': 'Product Backlog Item / 具體交付物 (要做什麼)',
       'HOW': '執行計畫 / 拆解任務 (如何做)'
@@ -61,8 +61,9 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ result: aiContent.trim() });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as Error;
     console.error("API Route Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

@@ -44,6 +44,7 @@ export default function Home() {
     localStorage.setItem('openai_api_key', value);
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isAiLoading, setIsAiLoading] = useState(false);
 
   const handleAiRewrite = async (setter: React.Dispatch<React.SetStateAction<{ id: string; text: string }[]>>, items: { id: string; text: string }[], index: number, fieldType: 'WHY' | 'WHAT' | 'HOW') => {
@@ -72,9 +73,10 @@ export default function Home() {
       const resData = await response.json();
       newItems[index].text = resData.result || currentText;
       setter(newItems);
-    } catch (err: any) {
-      console.error('AI Rewrite Error:', err);
-      alert('潤飾失敗：' + (err.message || '未知錯誤'));
+    } catch (err: unknown) {
+      const e = err as Error;
+      console.error('AI Rewrite Error:', e);
+      alert('潤飾失敗：' + (e.message || '未知錯誤'));
     } finally {
       setIsAiLoading(false);
     }

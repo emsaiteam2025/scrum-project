@@ -28,7 +28,7 @@ export async function POST(req: Request) {
         try {
           const err = await response.json();
           errMessage = err?.error?.message || err?.error || response.statusText;
-        } catch(e) {}
+        } catch {}
         throw new Error(errMessage || 'Unknown Gemini API Error');
       }
       const data = await response.json();
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
         try {
           const err = await response.json();
           errMessage = err?.error?.message || response.statusText;
-        } catch(e) {}
+        } catch {}
         throw new Error(errMessage || 'Unknown OpenAI API Error');
       }
       const data = await response.json();
@@ -64,8 +64,9 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ result: aiContent });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as Error;
     console.error("API Route Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

@@ -32,8 +32,9 @@ export default function Backlog() {
 
   const sprintDays = data.sprintDays;
   const tasks = data.tasks;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const setTasks = (valOrFn: Task[] | ((prev: Task[]) => Task[])) => {
-    updateData((prevData: any) => ({
+    updateData((prevData: {tasks: Task[]}) => ({
       tasks: typeof valOrFn === 'function' ? valOrFn(prevData.tasks) : valOrFn
     }));
   };
@@ -54,7 +55,7 @@ export default function Backlog() {
         if (!sprintId) return;
 
         const { getAuth } = await import('firebase/auth');
-        const { doc, getDoc, setDoc } = await import('firebase/firestore');
+        const { doc, getDoc } = await import('firebase/firestore');
         const { db, app } = await import('@/lib/firebase');
         const auth = getAuth(app);
 
@@ -74,14 +75,14 @@ export default function Backlog() {
         }
 
         if (planningData && planningData.whats) {
-          const whats = planningData.whats.filter((w: any) => w.text && w.text.trim() !== '');
+          const whats = planningData.whats.filter((w: {id: string, text: string}) => w.text && w.text.trim() !== '');
           
           setTasks(prev => {
             let newTasks = [...prev];
             let changed = false;
             
             // 1. 同步 Planning 新增或修改的 WHAT
-            whats.forEach((w: any, index: number) => {
+            whats.forEach((w: {id: string, text: string}) => {
               const existingIndex = newTasks.findIndex(t => t.id === w.id);
               if (existingIndex >= 0) {
                 if (newTasks[existingIndex].title !== w.text) {
@@ -100,7 +101,7 @@ export default function Backlog() {
             });
 
             // 2. 移除在 Planning 中已被刪除的 WHAT
-            const whatIds = whats.map((w: any) => w.id);
+            const whatIds = whats.map((w: {id: string, text: string}) => w.id);
             const tasksToRemove = newTasks.filter(t => t.type === 'pbi' && !whatIds.includes(t.id));
             if (tasksToRemove.length > 0) {
               newTasks = newTasks.filter(t => t.type !== 'pbi' || whatIds.includes(t.id));
@@ -111,8 +112,8 @@ export default function Backlog() {
             const pbis = newTasks.filter(t => t.type === 'pbi');
             const others = newTasks.filter(t => t.type !== 'pbi');
             pbis.sort((a, b) => {
-              const idxA = whats.findIndex((w: any) => w.id === a.id);
-              const idxB = whats.findIndex((w: any) => w.id === b.id);
+              const idxA = whats.findIndex((w: {id: string, text: string}) => w.id === a.id);
+              const idxB = whats.findIndex((w: {id: string, text: string}) => w.id === b.id);
               return idxA - idxB;
             });
             
@@ -137,6 +138,7 @@ export default function Backlog() {
     // 設定每 5 秒同步一次以達成類似即時的效果
     const interval = setInterval(syncWhatsFromPlanning, 5000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
 
@@ -176,13 +178,13 @@ export default function Backlog() {
       let parsedTasks = [];
       try {
         parsedTasks = JSON.parse(aiContent);
-      } catch (parseErr) {
+      } catch {
         console.error("JSON 解析失敗，原始字串為:", aiContent);
         throw new Error("AI 回傳的格式不正確，無法解析為 JSON");
       }
       
       setTasks((prev) => {
-        const newTasks = parsedTasks.map((t: any, i: number) => ({
+        const newTasks = parsedTasks.map((t: {title: string, desc: string}, i: number) => ({
           id: `task-${Date.now()}-${i}`,
           type: 'task',
           status: 'todo',
@@ -195,7 +197,8 @@ export default function Backlog() {
         return [...newTasks, ...prev];
       });
       
-    } catch (err: any) {
+    } catch (error: unknown) {
+      const err = error as Error;
       console.error('AI Generate Error:', err);
       alert('產生失敗：' + (err.message || '未知錯誤') + '\n請確認 API Key 是否有效，或查看 Console 了解詳細錯誤。');
     } finally {

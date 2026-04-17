@@ -27,6 +27,7 @@ export default function DailyScrum() {
     if (completedDays.length !== daysCount && !loading) {
       updateData({ completedDays: Array(daysCount).fill(false) });
     }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
   const updateNote = (index: number, text: string) => {
