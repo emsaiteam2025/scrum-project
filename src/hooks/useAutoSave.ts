@@ -83,10 +83,9 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
         }
       } catch {}
 
-      // 若使用者已開始輸入，不覆蓋其變更（避免非同步載入 race condition）
-      if (!isDirty.current) {
-        setData({ ...initialData, ...(mainData ?? {}), ...(draftData ?? {}) } as T);
-      }
+      setData({ ...initialData, ...(mainData ?? {}), ...(draftData ?? {}) } as T);
+      // Reset dirty after load so the load itself doesn't trigger a spurious save
+      isDirty.current = false;
       setLoading(false);
     };
 

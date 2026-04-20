@@ -17,7 +17,6 @@ export default function DailyScrum() {
     dailyNotesQ3: {} as Record<number, string>
   });
 
-  const completedDays = data.completedDays || [];
   const dailyNotes = data.dailyNotes || {};
   const dailyNotesQ1 = data.dailyNotesQ1 || {};
   const dailyNotesQ2 = data.dailyNotesQ2 || {};
@@ -25,17 +24,16 @@ export default function DailyScrum() {
   const [activeDay, setActiveDay] = useState<number | null>(null);
 
   useEffect(() => {
-    // 取得使用者設定的天數，預設 30
     const savedDays = localStorage.getItem('sprintDays');
-    const daysCount = savedDays ? Number(savedDays) : 30;
-    setSprintDays(daysCount);
-    
-    // 若初始化狀態為空或長度不對，則初始化
-    if ((!completedDays || completedDays.length !== daysCount) && !loading) {
-      updateData({ completedDays: Array(daysCount).fill(false) });
-    }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
+    setSprintDays(savedDays ? Number(savedDays) : 30);
+  }, []);
+
+  // 本地 derive：若 Firebase 尚未有 completedDays 或長度不對，給預設值
+  // 不呼叫 updateData，避免誤觸 isDirty 導致 Firebase 資料被空值覆蓋
+  const completedDays: boolean[] =
+    data.completedDays?.length === sprintDays
+      ? data.completedDays
+      : Array(sprintDays).fill(false);
 
   const updateSpecificNote = (index: number, key: 'Q1' | 'Q2' | 'Q3', text: string) => {
     if (key === 'Q1') {
