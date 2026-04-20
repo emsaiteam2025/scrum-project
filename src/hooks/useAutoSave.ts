@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { db } from '@/lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
@@ -9,139 +9,160 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
   const { user, loading: authLoading } = useAuth();
   const [data, setData] = useState<T>(initialData);
   const [loading, setLoading] = useState(true);
-  const isFirstLoad = useRef(true);
-  
+
+  // isDirty: true only after user makes actual edits — prevents spurious saves on load
+  const isDirty = useRef(false);
+  // Keep latest values accessible in async callbacks and event handlers
+  const dataRef = useRef<T>(initialData);
+  const userRef = useRef(user);
+  const sprintIdRef = useRef<string | null>(null);
+
   const [sprintId, setSprintId] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      setSprintId(localStorage.getItem('currentSprintId'));
+      const id = localStorage.getItem('currentSprintId');
+      setSprintId(id);
+      sprintIdRef.current = id;
     }
   }, []);
 
-  // 防卡死計時器：只要 loading 是 true 就開始計時 3 秒，時間到強制解除
+  useEffect(() => { dataRef.current = data; }, [data]);
+  useEffect(() => { userRef.current = user; }, [user]);
+
+  // 防卡死計時器：3 秒後強制解除 loading
   useEffect(() => {
     if (!loading) return;
-    const fallbackTimer = setTimeout(() => {
-      console.warn("載入資料逾時，已強制解除 Loading 狀態！");
-      isFirstLoad.current = false;
+    const t = setTimeout(() => {
+      console.warn('[AutoSave] 載入逾時，強制解除 loading');
       setLoading(false);
     }, 3000);
-    return () => clearTimeout(fallbackTimer);
+    return () => clearTimeout(t);
   }, [loading]);
 
   // 載入資料
   useEffect(() => {
     if (authLoading) return;
-    
-    // 如果沒有 sprintId (或是字串 null/undefined)，提早結束 loading
+
     if (!sprintId || sprintId === 'null' || sprintId === 'undefined') {
       setLoading(false);
-      isFirstLoad.current = false;
       return;
     }
 
     const loadData = async () => {
       const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
-      
+      let mainData: Partial<T> | null = null;
+
       if (user || isPublicViewer) {
         try {
           const docRef = doc(db, 'sprints', sprintId);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists() && docSnap.data()[pageKey]) {
-            setData({ ...initialData, ...docSnap.data()[pageKey] });
+            mainData = docSnap.data()[pageKey];
           }
-        } catch (error) {
-          console.error("載入失敗:", error);
+        } catch (err) {
+          console.error('[AutoSave] 雲端載入失敗:', err);
         }
       } else {
         try {
           const saved = localStorage.getItem(`sprint_${sprintId}_${pageKey}`);
-          if (saved) {
-            setData({ ...initialData, ...JSON.parse(saved) });
-          }
-        } catch (error) {
-          console.error("讀取本地資料失敗:", error);
+          if (saved) mainData = JSON.parse(saved);
+        } catch (err) {
+          console.error('[AutoSave] 本地載入失敗:', err);
         }
       }
-      
+
+      // 草稿：使用者上次未儲存成功的資料（優先級最高）
+      let draftData: Partial<T> | null = null;
+      try {
+        const draft = localStorage.getItem(`draft_sprint_${sprintId}_${pageKey}`);
+        if (draft) {
+          draftData = JSON.parse(draft);
+          console.log(`[AutoSave] 發現未儲存草稿，已恢復: ${pageKey}`);
+        }
+      } catch {}
+
+      setData({ ...initialData, ...(mainData ?? {}), ...(draftData ?? {}) } as T);
       setLoading(false);
-      isFirstLoad.current = false;
     };
-    
+
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, sprintId, pageKey]);
 
-  const [enableSave, setEnableSave] = useState(false);
-
-  // 解除首次載入鎖定
+  // 即時 localStorage 草稿備份：每次資料變動立即同步寫入（不等 debounce）
+  // 這是防止資料丟失的最後防線
   useEffect(() => {
-    if (!loading && isFirstLoad.current) {
-      const timer = setTimeout(() => {
-        isFirstLoad.current = false;
-        setEnableSave(true);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [loading]);
-
-  // 自動儲存
-  useEffect(() => {
-    if (loading || !enableSave || !sprintId) return;
-
-    const handler = setTimeout(async () => {
-      const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
-      if (isPublicViewer && !user) {
-        return; // 公開檢視者（未登入）不允許寫入雲端
-      }
-
-      if (user) {
-        try {
-          const docRef = doc(db, 'sprints', sprintId);
-          await setDoc(docRef, { [pageKey]: data }, { merge: true });
-          console.log(`[Autosave] Cloud sync success: ${pageKey}`);
-        } catch (error) {
-          console.error("[Autosave] Cloud sync failed:", error);
-        }
-      } else {
-        localStorage.setItem(`sprint_${sprintId}_${pageKey}`, JSON.stringify(data));
-        console.log(`[Autosave] Local sync success: ${pageKey}`);
-      }
-    }, 1000); // 防抖 1 秒
-
-    return () => clearTimeout(handler);
-  }, [data, user, loading, sprintId, pageKey, enableSave]);
-
-  const forceSave = async () => {
-    if (loading || !sprintId) return;
+    if (loading || !isDirty.current || !sprintId) return;
     const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
     if (isPublicViewer && !user) return;
+    try {
+      localStorage.setItem(`draft_sprint_${sprintId}_${pageKey}`, JSON.stringify(data));
+    } catch {}
+    // isDirty.current is a ref — React won't re-run this effect due to it,
+    // but setData in updateData triggers data to change, which re-runs this effect correctly
+  }, [data, loading, sprintId, pageKey, user]);
 
-    if (user) {
+  const syncToCloud = useCallback(async (currentData: T) => {
+    const sid = sprintIdRef.current;
+    const currentUser = userRef.current;
+    if (!sid) return;
+
+    const isPublicViewer = localStorage.getItem('sprintRole_' + sid) === 'viewer_via_link';
+    if (isPublicViewer && !currentUser) return;
+
+    if (currentUser) {
       try {
-        const docRef = doc(db, 'sprints', sprintId);
-        await setDoc(docRef, { [pageKey]: data }, { merge: true });
-        console.log(`[Force Save] Cloud sync success: ${pageKey}`);
-      } catch (error) {
-        console.error("[Force Save] Cloud sync failed:", error);
+        const docRef = doc(db, 'sprints', sid);
+        await setDoc(docRef, { [pageKey]: currentData }, { merge: true });
+        localStorage.removeItem(`draft_sprint_${sid}_${pageKey}`);
+        console.log(`[AutoSave] 雲端儲存成功: ${pageKey}`);
+      } catch (err) {
+        console.error('[AutoSave] 雲端儲存失敗（草稿已保留）:', err);
       }
     } else {
-      localStorage.setItem(`sprint_${sprintId}_${pageKey}`, JSON.stringify(data));
-      console.log(`[Force Save] Local sync success: ${pageKey}`);
+      localStorage.setItem(`sprint_${sid}_${pageKey}`, JSON.stringify(currentData));
+      localStorage.removeItem(`draft_sprint_${sid}_${pageKey}`);
+      console.log(`[AutoSave] 本地儲存成功: ${pageKey}`);
     }
-  };
+  }, [pageKey]);
+
+  // 防抖 1 秒後同步雲端
+  useEffect(() => {
+    if (loading || !isDirty.current || !sprintId) return;
+    const t = setTimeout(() => syncToCloud(data), 1000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, loading, sprintId, syncToCloud]);
+
+  const forceSave = useCallback(async () => {
+    if (!isDirty.current) return;
+    await syncToCloud(dataRef.current);
+  }, [syncToCloud]);
+
+  // 頁面切換 / 關閉時強制儲存
+  // localStorage 草稿已在 data 變動時同步寫入，這裡額外觸發雲端同步
+  useEffect(() => {
+    const handleHide = () => {
+      if (isDirty.current) forceSave();
+    };
+    document.addEventListener('visibilitychange', handleHide);
+    window.addEventListener('pagehide', handleHide);
+    return () => {
+      document.removeEventListener('visibilitychange', handleHide);
+      window.removeEventListener('pagehide', handleHide);
+    };
+  }, [forceSave]);
 
   const updateData = (updates: Partial<T> | ((prev: T) => Partial<T>)) => {
     if (sprintId) {
       const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
-      // 如果是唯讀訪客，不允許修改本地 state (禁止編輯)
       if (isPublicViewer && !user) {
         alert('您目前為檢視者模式，無法編輯此專案！');
         return;
       }
     }
-
+    isDirty.current = true;
     setData(prev => {
       const newUpdates = typeof updates === 'function' ? updates(prev) : updates;
       return { ...prev, ...newUpdates };
