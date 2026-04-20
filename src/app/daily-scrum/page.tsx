@@ -4,11 +4,12 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
+import SaveIndicator from '@/components/SaveIndicator';
 
 export default function DailyScrum() {
   const [sprintDays, setSprintDays] = useState<number>(30);
 
-  const { data, updateData, loading } = useAutoSave('daily', {
+  const { data, updateData, loading, saveStatus } = useAutoSave('daily', {
     completedDays: [] as boolean[],
     dailyNotes: {} as Record<number, string>,
     dailyNotesQ1: {} as Record<number, string>,
@@ -60,7 +61,10 @@ export default function DailyScrum() {
     <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
       <div className="max-w-[1200px] mx-auto space-y-8">
         
-        <Navigation />
+        <div className="flex items-center justify-between">
+          <Navigation />
+          <SaveIndicator status={saveStatus} />
+        </div>
 
         {/* Loading Overlay */}
         {loading && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"><div className="bg-white px-6 py-4 rounded-xl font-bold text-[#5b755e] shadow-xl text-lg flex items-center gap-3"><span>💾</span> <span>載入資料中...</span></div></div>}

@@ -5,14 +5,15 @@ import { db } from '@/lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
 
+export type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error';
+
 export function useAutoSave<T>(pageKey: string, initialData: T) {
   const { user, loading: authLoading } = useAuth();
   const [data, setData] = useState<T>(initialData);
   const [loading, setLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
 
-  // isDirty: true only after user makes actual edits — prevents spurious saves on load
   const isDirty = useRef(false);
-  // Keep latest values accessible in async callbacks and event handlers
   const dataRef = useRef<T>(initialData);
   const userRef = useRef(user);
   const sprintIdRef = useRef<string | null>(null);
@@ -72,7 +73,7 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
         }
       }
 
-      // 草稿：使用者上次未儲存成功的資料（優先級最高）
+      // 草稿：上次未儲存成功的資料（優先級最高）
       let draftData: Partial<T> | null = null;
       try {
         const draft = localStorage.getItem(`draft_sprint_${sprintId}_${pageKey}`);
@@ -82,26 +83,16 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
         }
       } catch {}
 
-      setData({ ...initialData, ...(mainData ?? {}), ...(draftData ?? {}) } as T);
+      // 若使用者已開始輸入，不覆蓋其變更（避免非同步載入 race condition）
+      if (!isDirty.current) {
+        setData({ ...initialData, ...(mainData ?? {}), ...(draftData ?? {}) } as T);
+      }
       setLoading(false);
     };
 
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading, sprintId, pageKey]);
-
-  // 即時 localStorage 草稿備份：每次資料變動立即同步寫入（不等 debounce）
-  // 這是防止資料丟失的最後防線
-  useEffect(() => {
-    if (loading || !isDirty.current || !sprintId) return;
-    const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
-    if (isPublicViewer && !user) return;
-    try {
-      localStorage.setItem(`draft_sprint_${sprintId}_${pageKey}`, JSON.stringify(data));
-    } catch {}
-    // isDirty.current is a ref — React won't re-run this effect due to it,
-    // but setData in updateData triggers data to change, which re-runs this effect correctly
-  }, [data, loading, sprintId, pageKey, user]);
 
   const syncToCloud = useCallback(async (currentData: T) => {
     const sid = sprintIdRef.current;
@@ -111,25 +102,43 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
     const isPublicViewer = localStorage.getItem('sprintRole_' + sid) === 'viewer_via_link';
     if (isPublicViewer && !currentUser) return;
 
+    setSaveStatus('saving');
+
     if (currentUser) {
       try {
         const docRef = doc(db, 'sprints', sid);
         await setDoc(docRef, { [pageKey]: currentData }, { merge: true });
         localStorage.removeItem(`draft_sprint_${sid}_${pageKey}`);
+        setSaveStatus('saved');
         console.log(`[AutoSave] 雲端儲存成功: ${pageKey}`);
+        setTimeout(() => setSaveStatus('idle'), 2000);
       } catch (err) {
         console.error('[AutoSave] 雲端儲存失敗（草稿已保留）:', err);
+        setSaveStatus('error');
       }
     } else {
       localStorage.setItem(`sprint_${sid}_${pageKey}`, JSON.stringify(currentData));
       localStorage.removeItem(`draft_sprint_${sid}_${pageKey}`);
+      setSaveStatus('saved');
       console.log(`[AutoSave] 本地儲存成功: ${pageKey}`);
+      setTimeout(() => setSaveStatus('idle'), 2000);
     }
   }, [pageKey]);
+
+  // 即時 localStorage 草稿備份（最後防線，每次 data 變動同步寫入）
+  useEffect(() => {
+    if (loading || !isDirty.current || !sprintId) return;
+    const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
+    if (isPublicViewer && !user) return;
+    try {
+      localStorage.setItem(`draft_sprint_${sprintId}_${pageKey}`, JSON.stringify(data));
+    } catch {}
+  }, [data, loading, sprintId, pageKey, user]);
 
   // 防抖 1 秒後同步雲端
   useEffect(() => {
     if (loading || !isDirty.current || !sprintId) return;
+    setSaveStatus('pending');
     const t = setTimeout(() => syncToCloud(data), 1000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,16 +150,20 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
   }, [syncToCloud]);
 
   // 頁面切換 / 關閉時強制儲存
-  // localStorage 草稿已在 data 變動時同步寫入，這裡額外觸發雲端同步
   useEffect(() => {
     const handleHide = () => {
+      if (document.visibilityState === 'hidden' && isDirty.current) {
+        forceSave();
+      }
+    };
+    const handlePageHide = () => {
       if (isDirty.current) forceSave();
     };
     document.addEventListener('visibilitychange', handleHide);
-    window.addEventListener('pagehide', handleHide);
+    window.addEventListener('pagehide', handlePageHide);
     return () => {
       document.removeEventListener('visibilitychange', handleHide);
-      window.removeEventListener('pagehide', handleHide);
+      window.removeEventListener('pagehide', handlePageHide);
     };
   }, [forceSave]);
 
@@ -169,5 +182,5 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
     });
   };
 
-  return { data, updateData, loading, forceSave };
+  return { data, updateData, loading, forceSave, saveStatus };
 }

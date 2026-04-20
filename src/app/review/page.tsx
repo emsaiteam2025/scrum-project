@@ -5,9 +5,10 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
+import SaveIndicator from '@/components/SaveIndicator';
 
 export default function SprintReview() {
-  const { data, updateData, loading } = useAutoSave('review', {
+  const { data, updateData, loading, saveStatus } = useAutoSave('review', {
     opening: '',
     demo: '',
     market: '',
@@ -18,7 +19,10 @@ export default function SprintReview() {
     <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
       <div className="max-w-[1000px] mx-auto space-y-8">
         
-        <Navigation />
+        <div className="flex items-center justify-between">
+          <Navigation />
+          <SaveIndicator status={saveStatus} />
+        </div>
 
         {/* Loading Overlay */}
         {loading && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"><div className="bg-white px-6 py-4 rounded-xl font-bold text-[#5b755e] shadow-xl text-lg flex items-center gap-3"><span>💾</span> <span>載入資料中...</span></div></div>}
