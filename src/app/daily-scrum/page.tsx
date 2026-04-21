@@ -37,11 +37,11 @@ export default function DailyScrum() {
 
   const updateSpecificNote = (index: number, key: 'Q1' | 'Q2' | 'Q3', text: string) => {
     if (key === 'Q1') {
-      updateData({ dailyNotesQ1: { ...dailyNotesQ1, [index]: text } });
+      updateData(prev => ({ dailyNotesQ1: { ...(prev.dailyNotesQ1 || {}), [index]: text } }));
     } else if (key === 'Q2') {
-      updateData({ dailyNotesQ2: { ...dailyNotesQ2, [index]: text } });
+      updateData(prev => ({ dailyNotesQ2: { ...(prev.dailyNotesQ2 || {}), [index]: text } }));
     } else if (key === 'Q3') {
-      updateData({ dailyNotesQ3: { ...dailyNotesQ3, [index]: text } });
+      updateData(prev => ({ dailyNotesQ3: { ...(prev.dailyNotesQ3 || {}), [index]: text } }));
     }
   };
 

@@ -84,8 +84,13 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
       } catch {}
 
       setData({ ...initialData, ...(mainData ?? {}), ...(draftData ?? {}) } as T);
-      // Reset dirty after load so the load itself doesn't trigger a spurious save
-      isDirty.current = false;
+      // If we found a draft, keep isDirty=true so the merged data gets pushed to Firebase
+      // This prevents data loss when user navigated away before the debounce fired
+      if (draftData) {
+        isDirty.current = true;
+      } else {
+        isDirty.current = false;
+      }
       setLoading(false);
     };
 
@@ -147,6 +152,19 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
     if (!isDirty.current) return;
     await syncToCloud(dataRef.current);
   }, [syncToCloud]);
+
+  // 組件 unmount 時（client-side 換頁）同步寫入 draft，防止 debounce 被 cleanup 取消
+  useEffect(() => {
+    return () => {
+      if (!isDirty.current || !sprintIdRef.current) return;
+      const sid = sprintIdRef.current;
+      const isPublicViewer = localStorage.getItem('sprintRole_' + sid) === 'viewer_via_link';
+      if (isPublicViewer && !userRef.current) return;
+      try {
+        localStorage.setItem(`draft_sprint_${sid}_${pageKey}`, JSON.stringify(dataRef.current));
+      } catch {}
+    };
+  }, [pageKey]);
 
   // 頁面切換 / 關閉時強制儲存
   useEffect(() => {
