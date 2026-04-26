@@ -26,6 +26,7 @@ export default function Backlog() {
   const [isPhotoRestoring, setIsPhotoRestoring] = useState(false);
   const photoRestoredAt = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const deletedPbiIds = useRef<Set<string>>(new Set());
 
   const { data, updateData, loading, forceSave, saveStatus } = useAutoSave('backlog', {
     sprintDays: 30 as number | string,
@@ -106,12 +107,15 @@ export default function Backlog() {
                   newPbis[existingIndex] = { ...newPbis[existingIndex], title: w.text };
                 }
               } else {
-                newPbis.push({
-                  id: w.id,
-                  type: 'pbi',
-                  status: 'pbi',
-                  title: w.text
-                });
+                // 跳過使用者在 Backlog 手動刪除過的 PBI，不重新加入
+                if (!deletedPbiIds.current.has(w.id)) {
+                  newPbis.push({
+                    id: w.id,
+                    type: 'pbi',
+                    status: 'pbi',
+                    title: w.text
+                  });
+                }
               }
             });
 
@@ -159,6 +163,16 @@ export default function Backlog() {
   useEffect(() => {
     const savedKey = localStorage.getItem('openai_api_key');
     if (savedKey) setApiKey(savedKey);
+  }, []);
+
+  // 從 localStorage 載入已刪除的 PBI ID，避免 Planning 同步重新加回
+  useEffect(() => {
+    const sprintId = localStorage.getItem('currentSprintId');
+    if (!sprintId) return;
+    try {
+      const stored = localStorage.getItem(`deleted_pbis_${sprintId}`);
+      if (stored) deletedPbiIds.current = new Set(JSON.parse(stored));
+    } catch {}
   }, []);
 
   const handleAiGenerateTasks = async (pbiId: string, pbiTitle: string) => {
@@ -273,6 +287,10 @@ export default function Backlog() {
 
       setTasks(restoredTasks);
       photoRestoredAt.current = Date.now();
+      // 照片還原是全新取代，清除已刪除 PBI 記錄
+      deletedPbiIds.current = new Set();
+      const sid = localStorage.getItem('currentSprintId');
+      if (sid) localStorage.removeItem(`deleted_pbis_${sid}`);
 
       setTimeout(() => forceSave && forceSave(), 100);
 
@@ -372,6 +390,17 @@ export default function Backlog() {
   };
 
   const deleteTask = (id: string) => {
+    // 若刪除的是 PBI，記錄其 ID 防止 Planning 同步重新加入
+    const target = data.tasks.find(t => t.id === id);
+    if (target?.type === 'pbi') {
+      deletedPbiIds.current.add(id);
+      const sprintId = localStorage.getItem('currentSprintId');
+      if (sprintId) {
+        try {
+          localStorage.setItem(`deleted_pbis_${sprintId}`, JSON.stringify(Array.from(deletedPbiIds.current)));
+        } catch {}
+      }
+    }
     setTasks((prev: Task[]) => prev.filter(t => t.id !== id));
   };
 
