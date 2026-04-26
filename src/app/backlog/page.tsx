@@ -881,6 +881,12 @@ export default function Backlog() {
                            <div className="text-xs font-bold text-[#9b596f] uppercase tracking-widest">已驗收</div>
                            <div className="font-bold text-[#3e362e] text-sm">{pbi.acceptedBy}</div>
                            <div className="text-xs text-[#8a7f72]">{pbi.acceptedAt}</div>
+                           <button
+                             onClick={() => setTasks(prev => prev.map(t => t.id === pbi.id ? { ...t, acceptedBy: undefined, acceptedAt: undefined } : t))}
+                             className="text-[10px] text-[#9b596f] underline hover:text-[#7a3f55] mt-1"
+                           >
+                             取消驗收
+                           </button>
                          </div>
                        ) : (
                          <>
