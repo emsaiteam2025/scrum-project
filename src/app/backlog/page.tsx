@@ -14,6 +14,8 @@ interface Task {
   role?: string;
   time?: string;
   pbiId?: string;
+  acceptedBy?: string;
+  acceptedAt?: string;
 }
 
 const initialTasks: Task[] = [];
@@ -24,6 +26,7 @@ export default function Backlog() {
   const [apiKey, setApiKey] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isPhotoRestoring, setIsPhotoRestoring] = useState(false);
+  const [poName, setPoName] = useState<string>('');
   const photoRestoredAt = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const deletedPbiIds = useRef<Set<string>>(new Set());
@@ -174,6 +177,30 @@ export default function Backlog() {
       if (stored) deletedPbiIds.current = new Set(JSON.parse(stored));
     } catch {}
   }, []);
+
+  // 從 Firebase 讀取 Planning 的 PO 名字作為驗收官
+  useEffect(() => {
+    const sprintId = localStorage.getItem('currentSprintId');
+    if (!sprintId) return;
+    const loadPo = async () => {
+      try {
+        const { doc, getDoc } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+        const snap = await getDoc(doc(db, 'sprints', sprintId));
+        if (snap.exists() && snap.data().planning?.po) {
+          setPoName(snap.data().planning.po);
+        }
+      } catch {}
+    };
+    loadPo();
+  }, []);
+
+  const acceptPbi = (id: string) => {
+    const now = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    setTasks(prev => prev.map(t =>
+      t.id === id ? { ...t, acceptedBy: poName || 'PO', acceptedAt: now } : t
+    ));
+  };
 
   const handleAiGenerateTasks = async (pbiId: string, pbiTitle: string) => {
     if (!apiKey) {
@@ -847,8 +874,27 @@ export default function Backlog() {
                        </div>
                      </div>
                      
-                     <div className="flex-1 p-2 bg-[#eac4d0]/10 flex items-center justify-center min-w-[200px]">
-                       <div className="text-[#9b596f]/30 font-bold text-sm transform -rotate-12">對應 PBI 增量</div>
+                     <div className="flex-1 p-4 bg-[#eac4d0]/10 flex flex-col items-center justify-center min-w-[200px] gap-3">
+                       {pbi.acceptedBy ? (
+                         <div className="flex flex-col items-center gap-2 border-4 border-[#9b596f] rounded-2xl px-5 py-4 bg-[#fff0f5] shadow-inner w-full text-center">
+                           <div className="text-2xl">✅</div>
+                           <div className="text-xs font-bold text-[#9b596f] uppercase tracking-widest">已驗收</div>
+                           <div className="font-bold text-[#3e362e] text-sm">{pbi.acceptedBy}</div>
+                           <div className="text-xs text-[#8a7f72]">{pbi.acceptedAt}</div>
+                         </div>
+                       ) : (
+                         <>
+                           <div className="text-[#9b596f]/20 font-bold text-xs transform -rotate-12 select-none">對應 PBI 增量</div>
+                           {poName && (
+                             <button
+                               onClick={() => acceptPbi(pbi.id)}
+                               className="bg-[#9b596f] text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-[#7a3f55] transition-all shadow-sm flex items-center gap-1"
+                             >
+                               ✅ 驗收確認
+                             </button>
+                           )}
+                         </>
+                       )}
                      </div>
                   </div>
                   );
