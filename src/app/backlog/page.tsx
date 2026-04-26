@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
+import SaveIndicator from '@/components/SaveIndicator';
 
 interface Task {
   id: string;
@@ -590,8 +591,11 @@ export default function Backlog() {
   return (
     <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
       <div className="max-w-[1400px] mx-auto space-y-8">
-        
-        <Navigation />
+
+        <div className="flex items-center justify-between">
+          <Navigation />
+          <SaveIndicator status={saveStatus} />
+        </div>
 
         {/* Loading Overlay */}
         {loading && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"><div className="bg-white px-6 py-4 rounded-xl font-bold text-[#5b755e] shadow-xl text-lg flex items-center gap-3"><span>💾</span> <span>載入資料中...</span></div></div>}
@@ -649,7 +653,21 @@ export default function Backlog() {
               <span>🎏</span> <ScrumTooltip keyword="Sprint Backlog" text="任務看板 (Sprint Backlog)" />
             </div>
             <div className="flex items-center gap-3">
-              <button 
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePhotoRestore}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isPhotoRestoring}
+                className="bg-[#fffdf9] text-[#467386] border-2 border-[#76a5af] px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-[#daf0f5] transition-all flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isPhotoRestoring ? '🔍 AI 解析中...' : '📸 從照片還原'}
+              </button>
+              <button
                 onClick={() => {
                   const newId = `pbi-${Date.now()}`;
                   setTasks([{ id: newId, type: 'pbi', status: 'pbi', title: '', desc: '', role: '', time: '' }, ...tasks]);
