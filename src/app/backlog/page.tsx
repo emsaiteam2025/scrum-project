@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
@@ -22,8 +22,11 @@ export default function Backlog() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isPhotoRestoring, setIsPhotoRestoring] = useState(false);
+  const photoRestoredAt = useRef<number>(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data, updateData, loading, forceSave } = useAutoSave('backlog', {
+  const { data, updateData, loading, forceSave, saveStatus } = useAutoSave('backlog', {
     sprintDays: 30 as number | string,
     tasks: initialTasks,
     sprintGoal: '',
@@ -52,6 +55,8 @@ export default function Backlog() {
 
     const syncWhatsFromPlanning = async () => {
       try {
+        // 照片還原後 15 秒內跳過同步，避免覆蓋剛還原的資料
+        if (Date.now() - photoRestoredAt.current < 15000) return;
         const sprintId = localStorage.getItem('currentSprintId');
         if (!sprintId) return;
 
