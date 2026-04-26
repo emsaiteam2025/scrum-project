@@ -115,9 +115,15 @@ export default function Backlog() {
               }
             });
 
-            // 2. 移除在 Planning 中已被刪除的 WHAT (只針對 PBI)
+            // 2. 只移除「由 Planning 同步進來、且已被 Planning 刪除」的 PBI
+            // 照片還原的 PBI (photo-pbi-*) 和手動新增的 PBI (pbi-*) 永遠保留
             const whatIds = whats.map((w: {id: string, text: string}) => w.id);
-            newPbis = newPbis.filter(t => whatIds.includes(t.id));
+            const planningIds = new Set(whatIds);
+            newPbis = newPbis.filter(t =>
+              planningIds.has(t.id) ||       // 仍在 Planning 清單中
+              t.id.startsWith('photo-') ||   // 照片還原的 PBI
+              t.id.startsWith('pbi-')        // 手動新增的 PBI
+            );
 
             // 將同步好的 PBI 與原本的 Tasks 合併
             const mergedTasks = [...newPbis, ...tasksList];
