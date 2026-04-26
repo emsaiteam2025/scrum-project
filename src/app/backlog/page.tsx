@@ -213,6 +213,62 @@ export default function Backlog() {
     }
   };
 
+  const handlePhotoRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!apiKey) {
+      alert('⚠️ 請先輸入 Gemini API Key（以 AIza 開頭），才能使用照片還原功能！');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    setIsPhotoRestoring(true);
+    try {
+      const reader = new FileReader();
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(',')[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const response = await fetch('/api/ai-restore-backlog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64, mimeType: file.type, apiKey })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || '照片解析失敗');
+      }
+
+      const resData = await response.json();
+      const restoredTasks = resData.tasks;
+
+      if (!Array.isArray(restoredTasks)) {
+        throw new Error('AI 回傳格式錯誤，請重試');
+      }
+
+      setTasks(restoredTasks);
+      photoRestoredAt.current = Date.now();
+
+      setTimeout(() => forceSave && forceSave(), 100);
+
+      alert(`✅ 成功從照片還原 ${restoredTasks.length} 個項目！`);
+    } catch (err: unknown) {
+      const error = err as Error;
+      console.error('Photo restore error:', error);
+      alert('照片還原失敗：' + (error.message || '未知錯誤'));
+    } finally {
+      setIsPhotoRestoring(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleDaysChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     if (value === '') {
