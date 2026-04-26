@@ -622,43 +622,33 @@ export default function Backlog() {
           <div className="bg-[#e07a5f] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white tracking-wider flex items-center gap-2 drop-shadow-sm">
             <span>🔥</span> Sprint 核心資訊
           </div>
-          <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="col-span-1 md:col-span-2 flex flex-col gap-2">
-              <label className="font-bold text-[#6b5e50]">Sprint Goal (目標)</label>
-              <input 
-                type="text" 
-                className="w-full px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#e07a5f]/50 shadow-inner font-medium text-[#3e362e]" 
-                placeholder="輸入本期主要目標..." 
+          <div className="p-6 flex flex-col md:flex-row gap-6 items-start">
+            <div className="flex-1 flex flex-col gap-2">
+              <label className="font-bold text-lg text-[#e07a5f]">🎯 Sprint Goal（目標）</label>
+              <input
+                type="text"
+                className="w-full px-5 py-4 bg-[#fff8f0] border-2 border-[#e07a5f] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#e07a5f]/40 shadow-inner font-bold text-[#3e362e] text-base placeholder:font-normal placeholder:text-[#c0a898]"
+                placeholder="輸入本期主要目標..."
                 value={data.sprintGoal}
                 onChange={e => updateData({ sprintGoal: e.target.value })}
               />
             </div>
-            <div className="flex flex-col gap-2 relative">
-              <label className="font-bold text-[#6b5e50]">週期 (天數)</label>
-              <input 
-                type="number" 
+            <div className="flex flex-col gap-2 relative md:w-40">
+              <label className="font-bold text-lg text-[#6b5e50]">週期（天）</label>
+              <input
+                type="number"
                 min="1"
                 max="30"
                 value={sprintDays}
                 onChange={handleDaysChange}
-                className="w-full px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#e07a5f]/50 shadow-inner font-medium text-[#3e362e]" 
-                placeholder="輸入天數 (最多 30)..." 
+                className="w-full px-4 py-4 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#e07a5f]/50 shadow-inner font-medium text-[#3e362e]"
+                placeholder="最多 30"
               />
               {errorMsg && (
                 <div className="absolute -bottom-6 left-0 text-xs font-bold text-[#c96262] bg-[#fceded] px-2 py-0.5 rounded border border-[#e6b1b1] whitespace-nowrap">
                   {errorMsg}
                 </div>
               )}
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="font-bold text-[#6b5e50]">利益關係人</label>
-              <input 
-                type="text" 
-                className="w-full px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#e07a5f]/50 shadow-inner font-medium text-[#3e362e]" 
-                placeholder="輸入相關業務單位或高管..." 
-                value={data.stakeholders}
-                onChange={e => updateData({ stakeholders: e.target.value })}
-              />
             </div>
           </div>
         </section>
