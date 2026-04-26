@@ -226,25 +226,36 @@ export default function Backlog() {
 
     setIsPhotoRestoring(true);
     try {
-      const reader = new FileReader();
-      const imageBase64 = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(',')[1]);
+      // 壓縮圖片到 1500x3000px 以內，避免超過 Vercel 4.5MB 請求限制
+      const { base64: imageBase64, mimeType: compressedMimeType } = await new Promise<{ base64: string; mimeType: string }>((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          const MAX_WIDTH = 1500;
+          const MAX_HEIGHT = 3000;
+          const ratio = Math.min(1, MAX_WIDTH / img.width, MAX_HEIGHT / img.height);
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * ratio);
+          canvas.height = Math.round(img.height * ratio);
+          const ctx = canvas.getContext('2d')!;
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(url);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+          resolve({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
         };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
+        img.onerror = reject;
+        img.src = url;
       });
 
       const response = await fetch('/api/ai-restore-backlog', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64, mimeType: file.type, apiKey })
+        body: JSON.stringify({ imageBase64, mimeType: compressedMimeType, apiKey })
       });
 
       if (!response.ok) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || '照片解析失敗');
+        throw new Error(errData.error || `照片解析失敗（HTTP ${response.status}）`);
       }
 
       const resData = await response.json();
