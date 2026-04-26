@@ -14,7 +14,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: '照片還原功能需要 Gemini API Key（以 AIza 開頭）' }, { status: 400 });
     }
 
-    const prompt = `你是一個 Scrum 任務看板分析專家。請仔細分析這張任務看板的照片，辨識出所有的 PBI（產品待辦項目）和任務卡片。
+    const prompt = `你是一個 Scrum 任務看板分析專家。請仔細分析這張任務看板的照片，辨識出所有的 PBI（產品待辦項目）和任務卡片，以及它們之間的歸屬關係。
 
 請回傳一個 JSON 陣列，格式如下（只回傳 JSON，不要有任何說明文字或 Markdown）：
 [
@@ -32,15 +32,18 @@ export async function POST(req: Request) {
     "title": "任務標題",
     "desc": "描述（若有）",
     "role": "負責人（若有）",
-    "time": "預估工時（若有）"
+    "time": "預估工時（若有）",
+    "pbiId": "photo-pbi-1"
   }
 ]
 
 規則：
 - type 只能是 "pbi" 或 "task"
-- PBI 的 status 固定為 "pbi"
+- PBI 的 status 固定為 "pbi"，不需要 pbiId 欄位
 - task 的 status 依看板欄位判斷：todo（待辦）、doing（進行中）、done（完成）、accepted（已驗收）
 - id 請用 "photo-pbi-1", "photo-pbi-2"... 和 "photo-task-1", "photo-task-2"... 依序命名
+- pbiId：task 所歸屬的 PBI 的 id（例如 "photo-pbi-1"）。若任務在看板中視覺上屬於某個 PBI 區塊，務必填入該 PBI 的 id；若真的無法判斷歸屬，才留空字串 ""
+- 看板通常以橫列或區塊方式呈現 PBI，同一 PBI 區塊內的任務卡片（todo/doing/done）都應歸屬該 PBI
 - 若無法辨識某欄位，用空字串 ""
 - 若看板中無任何任務，回傳空陣列 []`;
 
