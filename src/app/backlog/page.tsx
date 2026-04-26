@@ -638,7 +638,7 @@ export default function Backlog() {
     <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
       <div className="max-w-[1400px] mx-auto space-y-8">
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col items-center">
           <Navigation />
           <SaveIndicator status={saveStatus} />
         </div>
