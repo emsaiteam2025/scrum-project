@@ -13,6 +13,18 @@ interface Sprint {
   collaboratorEmails?: string[];
 }
 
+interface SprintDashboard {
+  sprintGoal: string;
+  totalTasks: number;
+  todo: number;
+  doing: number;
+  done: number;
+  pbiTotal: number;
+  pbiAccepted: number;
+  startDate: string;
+  endDate: string;
+}
+
 export default function SprintList() {
   const { user, loading: authLoading, signInWithGoogle, logout } = useAuth();
   const [sprints, setSprints] = useState<Sprint[]>([]);
@@ -22,6 +34,8 @@ export default function SprintList() {
   const [shareModalSprint, setShareModalSprint] = useState<Sprint | null>(null);
   const [shareEmail, setShareEmail] = useState('');
   const [shareRole, setShareRole] = useState<'editor'|'viewer'>('editor');
+  const [dashboards, setDashboards] = useState<Record<string, SprintDashboard>>({});
+  const [dashLoading, setDashLoading] = useState(false);
 
   useEffect(() => {
     // 如果載入超過 5 秒，顯示逾時提示
@@ -137,6 +151,63 @@ export default function SprintList() {
 
     fetchSprints();
   }, [user, authLoading]);
+
+  // 載入各 Sprint 的 backlog 進度資料
+  useEffect(() => {
+    if (loading || sprints.length === 0) return;
+    const fetchDashboard = async () => {
+      setDashLoading(true);
+      const result: Record<string, SprintDashboard> = {};
+      await Promise.all(sprints.map(async (sprint) => {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let backlog: any = null;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let planning: any = null;
+          if (user) {
+            const snap = await getDoc(doc(db, 'sprints', sprint.id));
+            if (snap.exists()) {
+              backlog = snap.data().backlog ?? null;
+              planning = snap.data().planning ?? null;
+            }
+          } else {
+            const localBacklog = localStorage.getItem(`sprint_${sprint.id}_backlog`);
+            const localPlanning = localStorage.getItem(`sprint_${sprint.id}_planning`);
+            if (localBacklog) backlog = JSON.parse(localBacklog);
+            if (localPlanning) planning = JSON.parse(localPlanning);
+          }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const tasks: any[] = backlog?.tasks ?? [];
+          const allTasks = tasks.filter(t => t.type === 'task');
+          const pbis = tasks.filter(t => t.status === 'pbi');
+          const startDate: string = planning?.startDate ?? '';
+          const sprintDays: number = Number(backlog?.sprintDays ?? 0);
+          let endDate = '';
+          if (startDate && sprintDays > 0) {
+            const d = new Date(startDate);
+            d.setDate(d.getDate() + sprintDays - 1);
+            endDate = d.toISOString().split('T')[0];
+          }
+          result[sprint.id] = {
+            sprintGoal: backlog?.sprintGoal ?? '',
+            totalTasks: allTasks.length,
+            todo: allTasks.filter(t => t.status === 'todo').length,
+            doing: allTasks.filter(t => t.status === 'doing').length,
+            done: allTasks.filter(t => t.status === 'done').length,
+            pbiTotal: pbis.length,
+            pbiAccepted: pbis.filter(t => t.acceptedBy).length,
+            startDate,
+            endDate,
+          };
+        } catch {
+          result[sprint.id] = { sprintGoal: '', totalTasks: 0, todo: 0, doing: 0, done: 0, pbiTotal: 0, pbiAccepted: 0, startDate: '', endDate: '' };
+        }
+      }));
+      setDashboards(result);
+      setDashLoading(false);
+    };
+    fetchDashboard();
+  }, [sprints, loading, user]);
 
   const createSprint = async () => {
     const newSprint: Sprint = {
@@ -308,6 +379,161 @@ export default function SprintList() {
             </div>
           </div>
         </div>
+
+        {/* 主管儀表板 */}
+        {!loading && sprints.length > 0 && (() => {
+          const vals = Object.values(dashboards);
+          const totalTasks = vals.reduce((s, d) => s + d.totalTasks, 0);
+          const totalDone = vals.reduce((s, d) => s + d.done, 0);
+          const totalDoing = vals.reduce((s, d) => s + d.doing, 0);
+          const totalTodo = vals.reduce((s, d) => s + d.todo, 0);
+          const overallRate = totalTasks > 0 ? Math.round(totalDone / totalTasks * 100) : 0;
+          const activeCount = vals.filter(d => d.doing > 0 || d.todo > 0).length;
+          return (
+            <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden">
+              <div className="bg-[#5b755e] border-b-4 border-[#3d4f3f] p-4 text-xl font-bold text-white flex items-center justify-between">
+                <div className="flex items-center gap-2"><span>📊</span> 主管儀表板</div>
+                {dashLoading && <div className="text-sm font-normal opacity-70 animate-pulse">載入進度中...</div>}
+              </div>
+
+              <div className="p-4 md:p-6 space-y-6">
+                {/* 整體統計卡片 */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-[#e8eedd] border-2 border-[#a5c2a8] rounded-2xl p-4 text-center">
+                    <div className="text-3xl font-bold text-[#4a7c59]">{sprints.length}</div>
+                    <div className="text-xs font-bold text-[#5b755e] mt-1">📁 Sprint 總數</div>
+                  </div>
+                  <div className="bg-[#faebce] border-2 border-[#e6c98a] rounded-2xl p-4 text-center">
+                    <div className="text-3xl font-bold text-[#d4a373]">{dashLoading ? '—' : activeCount}</div>
+                    <div className="text-xs font-bold text-[#d4a373] mt-1">⚡ 進行中的 Sprint</div>
+                  </div>
+                  <div className="bg-[#f2e3c6] border-2 border-[#d4a373] rounded-2xl p-4 text-center">
+                    <div className="text-3xl font-bold text-[#8b5a2b]">{dashLoading ? '—' : totalTasks}</div>
+                    <div className="text-xs font-bold text-[#8b5a2b] mt-1">📋 任務總數</div>
+                  </div>
+                  <div className="bg-[#c2dce3] border-2 border-[#76a5af] rounded-2xl p-4 text-center">
+                    <div className="text-3xl font-bold text-[#467386]">{dashLoading ? '—' : `${overallRate}%`}</div>
+                    <div className="text-xs font-bold text-[#467386] mt-1">✅ 整體完成率</div>
+                  </div>
+                </div>
+
+                {/* 整體進度條 */}
+                {!dashLoading && totalTasks > 0 && (
+                  <div className="space-y-2">
+                    <div className="w-full h-4 rounded-full bg-[#e8e4d9] overflow-hidden flex border-2 border-[#b5a695]">
+                      {totalDone > 0 && <div style={{ width: `${Math.round(totalDone/totalTasks*100)}%` }} className="bg-[#8fb996] h-full transition-all duration-700" />}
+                      {totalDoing > 0 && <div style={{ width: `${Math.round(totalDoing/totalTasks*100)}%` }} className="bg-[#d4a373] h-full transition-all duration-700" />}
+                      {totalTodo > 0 && <div style={{ width: `${Math.round(totalTodo/totalTasks*100)}%` }} className="bg-[#e6b1b1] h-full transition-all duration-700" />}
+                    </div>
+                    <div className="flex gap-4 text-xs font-bold text-[#8a7f72]">
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#8fb996] inline-block"/>完成 {totalDone}</span>
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#d4a373] inline-block"/>進行中 {totalDoing}</span>
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#e6b1b1] inline-block"/>待處理 {totalTodo}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 各 Sprint 進度卡片 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {sprints.map(sprint => {
+                    const d = dashboards[sprint.id];
+                    const total = d?.totalTasks ?? 0;
+                    const dn = d?.done ?? 0;
+                    const dg = d?.doing ?? 0;
+                    const td = d?.todo ?? 0;
+                    const pbiTotal = d?.pbiTotal ?? 0;
+                    const pbiAcc = d?.pbiAccepted ?? 0;
+                    const rate = total > 0 ? Math.round(dn / total * 100) : 0;
+                    const dgRate = total > 0 ? Math.round(dg / total * 100) : 0;
+                    const isOverdue = !!(d?.endDate && new Date(d.endDate) < new Date() && (td > 0 || dg > 0));
+                    const statusInfo = dashLoading
+                      ? { label: '載入中', cls: 'bg-[#f4f1ea] text-[#b5a695]' }
+                      : total === 0
+                        ? { label: '尚無任務', cls: 'bg-[#f4f1ea] text-[#8a7f72]' }
+                        : td === 0 && dg === 0
+                          ? { label: '✅ 已完成', cls: 'bg-[#e8eedd] text-[#4a7c59]' }
+                          : dg > 0
+                            ? { label: '⚡ 進行中', cls: 'bg-[#faebce] text-[#d4a373]' }
+                            : { label: '📋 待開始', cls: 'bg-[#fceded] text-[#c96262]' };
+                    return (
+                      <div key={sprint.id} onClick={() => selectSprint(sprint.id, sprint.name)}
+                        className="bg-[#faf8f5] border-2 border-[#e8d5b5] rounded-2xl p-5 cursor-pointer hover:border-[#8fb996] hover:shadow-md transition-all flex flex-col gap-3">
+
+                        {/* 名稱 + 狀態 */}
+                        <div className="flex justify-between items-start gap-2">
+                          <h3 className="font-bold text-[#3e362e] text-base leading-tight flex-1">{sprint.name}</h3>
+                          <span className={`text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${statusInfo.cls}`}>{statusInfo.label}</span>
+                        </div>
+
+                        {/* Sprint 目標 */}
+                        <p className="text-xs text-[#6b5e50] line-clamp-2 min-h-[2rem]">
+                          {d?.sprintGoal || <span className="text-[#d3cbbd] italic">尚未設定 Sprint 目標</span>}
+                        </p>
+
+                        {/* 日期範圍 */}
+                        <div className="flex items-center gap-2 text-xs bg-[#f4f1ea] rounded-lg px-3 py-2">
+                          <span>📅</span>
+                          {dashLoading ? (
+                            <span className="text-[#d3cbbd]">載入中...</span>
+                          ) : d?.startDate ? (
+                            <span className="font-bold text-[#6b5e50]">{new Date(d.startDate).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+                          ) : <span className="text-[#d3cbbd]">開始日未設定</span>}
+                          <span className="text-[#b5a695] font-bold">→</span>
+                          {!dashLoading && (d?.endDate ? (
+                            <span className={`font-bold ${isOverdue ? 'text-[#c96262]' : 'text-[#6b5e50]'}`}>
+                              {new Date(d.endDate).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                              {isOverdue && <span className="ml-1.5 text-[10px] bg-[#fceded] text-[#c96262] px-1.5 py-0.5 rounded-full border border-[#e6b1b1]">已逾期</span>}
+                            </span>
+                          ) : <span className="text-[#d3cbbd]">結束日未設定</span>)}
+                        </div>
+
+                        {/* 進度條 */}
+                        <div>
+                          <div className="flex justify-between text-xs mb-1.5">
+                            <span className="text-[#8a7f72] font-bold">任務完成率</span>
+                            <span className="font-bold text-[#5b755e]">{dashLoading ? '—' : total > 0 ? `${rate}%` : '尚無任務'}</span>
+                          </div>
+                          <div className="w-full h-3.5 rounded-full bg-[#e8e4d9] overflow-hidden flex border border-[#d3cbbd]">
+                            {dashLoading ? (
+                              <div className="w-full h-full bg-[#e0dbd3] animate-pulse" />
+                            ) : (
+                              <>
+                                {dn > 0 && <div style={{ width: `${rate}%` }} className="bg-[#8fb996] h-full transition-all duration-700" />}
+                                {dg > 0 && <div style={{ width: `${dgRate}%` }} className="bg-[#d4a373] h-full transition-all duration-700" />}
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 統計數字 */}
+                        <div className="flex justify-between items-center border-t border-[#f0ebe4] pt-3">
+                          <div className="flex gap-5">
+                            <div className="text-center">
+                              <div className={`text-2xl font-bold leading-none ${dn > 0 ? 'text-[#4a7c59]' : 'text-[#d3cbbd]'}`}>{dashLoading ? '—' : dn}</div>
+                              <div className="text-[10px] text-[#8a7f72] font-bold mt-1">✅ 完成</div>
+                            </div>
+                            <div className="text-center">
+                              <div className={`text-2xl font-bold leading-none ${dg > 0 ? 'text-[#d4a373]' : 'text-[#d3cbbd]'}`}>{dashLoading ? '—' : dg}</div>
+                              <div className="text-[10px] text-[#8a7f72] font-bold mt-1">⚡ 進行中</div>
+                            </div>
+                            <div className="text-center">
+                              <div className={`text-2xl font-bold leading-none ${td > 0 ? 'text-[#c96262]' : 'text-[#d3cbbd]'}`}>{dashLoading ? '—' : td}</div>
+                              <div className="text-[10px] text-[#8a7f72] font-bold mt-1">📋 待處理</div>
+                            </div>
+                          </div>
+                          <div className="text-center border-l border-[#e8d5b5] pl-5">
+                            <div className={`text-2xl font-bold leading-none ${pbiAcc > 0 ? 'text-[#9b596f]' : 'text-[#d3cbbd]'}`}>{dashLoading ? '—' : `${pbiAcc}/${pbiTotal}`}</div>
+                            <div className="text-[10px] text-[#8a7f72] font-bold mt-1">🍄 PBI 驗收</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+          );
+        })()}
 
         {/* 專案清單 */}
         {loading ? (

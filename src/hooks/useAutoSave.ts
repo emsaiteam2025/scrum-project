@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
 
 export type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error';
@@ -14,6 +14,7 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
 
   const isDirty = useRef(false);
+  const saveGeneration = useRef(0); // 每次用戶編輯時遞增，用來偵測儲存期間是否有新編輯
   const dataRef = useRef<T>(initialData);
   const userRef = useRef(user);
   const sprintIdRef = useRef<string | null>(null);
@@ -84,10 +85,9 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
       } catch {}
 
       setData({ ...initialData, ...(mainData ?? {}), ...(draftData ?? {}) } as T);
-      // If we found a draft, keep isDirty=true so the merged data gets pushed to Firebase
-      // This prevents data loss when user navigated away before the debounce fired
       if (draftData) {
         isDirty.current = true;
+        saveGeneration.current++;
       } else {
         isDirty.current = false;
       }
@@ -107,22 +107,39 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
     if (isPublicViewer && !currentUser) return;
 
     setSaveStatus('saving');
+    // 記錄儲存開始時的編輯世代，用來判斷儲存期間是否有新的用戶編輯
+    const genAtStart = saveGeneration.current;
 
     if (currentUser) {
-      try {
-        const docRef = doc(db, 'sprints', sid);
-        await setDoc(docRef, { [pageKey]: currentData }, { merge: true });
-        localStorage.removeItem(`draft_sprint_${sid}_${pageKey}`);
-        setSaveStatus('saved');
-        console.log(`[AutoSave] 雲端儲存成功: ${pageKey}`);
-        setTimeout(() => setSaveStatus('idle'), 2000);
-      } catch (err) {
-        console.error('[AutoSave] 雲端儲存失敗（草稿已保留）:', err);
-        setSaveStatus('error');
+      let lastErr: unknown;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt));
+          const docRef = doc(db, 'sprints', sid);
+          await setDoc(docRef, { [pageKey]: currentData }, { merge: true });
+          localStorage.removeItem(`draft_sprint_${sid}_${pageKey}`);
+          // 只有在儲存期間沒有新的用戶編輯時，才重置 isDirty
+          // 避免覆蓋儲存過程中產生的新變更
+          if (saveGeneration.current === genAtStart) {
+            isDirty.current = false;
+          }
+          setSaveStatus('saved');
+          console.log(`[AutoSave] 雲端儲存成功: ${pageKey}`);
+          setTimeout(() => setSaveStatus('idle'), 2000);
+          return;
+        } catch (err) {
+          lastErr = err;
+          console.warn(`[AutoSave] 儲存失敗 (嘗試 ${attempt + 1}/3):`, err);
+        }
       }
+      console.error('[AutoSave] 雲端儲存失敗（草稿已保留）:', lastErr);
+      setSaveStatus('error');
     } else {
       localStorage.setItem(`sprint_${sid}_${pageKey}`, JSON.stringify(currentData));
       localStorage.removeItem(`draft_sprint_${sid}_${pageKey}`);
+      if (saveGeneration.current === genAtStart) {
+        isDirty.current = false;
+      }
       setSaveStatus('saved');
       console.log(`[AutoSave] 本地儲存成功: ${pageKey}`);
       setTimeout(() => setSaveStatus('idle'), 2000);
@@ -152,6 +169,43 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
     if (!isDirty.current) return;
     await syncToCloud(dataRef.current);
   }, [syncToCloud]);
+
+  // 即時監聽遠端變更：其他裝置儲存後，自動同步到本機（不觸發 isDirty）
+  useEffect(() => {
+    if (!sprintId || !user || loading) return;
+
+    const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
+    if (isPublicViewer) return;
+
+    let isFirstSnapshot = true;
+    const docRef = doc(db, 'sprints', sprintId);
+    const unsubscribe = onSnapshot(
+      docRef,
+      (snap) => {
+        // 第一次快照是初始載入的 echo，跳過避免覆蓋草稿
+        if (isFirstSnapshot) {
+          isFirstSnapshot = false;
+          return;
+        }
+        // hasPendingWrites = true 表示是本機自己的寫入回傳，跳過
+        if (snap.metadata.hasPendingWrites) return;
+        // 本機有未儲存的變更，優先保護本機資料，避免遠端資料覆蓋
+        if (isDirty.current) return;
+        if (!snap.exists()) return;
+
+        const remoteData = snap.data()[pageKey];
+        if (!remoteData) return;
+
+        setData(prev => ({ ...prev, ...remoteData }));
+        console.log(`[AutoSave] 接收遠端即時更新: ${pageKey}`);
+      },
+      (error) => {
+        console.warn('[AutoSave] 即時監聽暫時中斷:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [sprintId, user, pageKey, loading]);
 
   // 組件 unmount 時（client-side 換頁）同步寫入 draft，防止 debounce 被 cleanup 取消
   useEffect(() => {
@@ -193,11 +247,20 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
       }
     }
     isDirty.current = true;
+    saveGeneration.current++;
     setData(prev => {
       const newUpdates = typeof updates === 'function' ? updates(prev) : updates;
       return { ...prev, ...newUpdates };
     });
   };
 
-  return { data, updateData, loading, forceSave, saveStatus };
+  // 背景同步用：更新 state 但不標記為 dirty，避免觸發不必要的儲存
+  const syncData = (updates: Partial<T> | ((prev: T) => Partial<T>)) => {
+    setData(prev => {
+      const newUpdates = typeof updates === 'function' ? updates(prev) : updates;
+      return { ...prev, ...newUpdates };
+    });
+  };
+
+  return { data, updateData, syncData, loading, forceSave, saveStatus };
 }

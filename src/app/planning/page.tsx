@@ -56,13 +56,20 @@ export default function Home() {
     const poIdea = data.poIdea.trim() || '';
     const newItems = [...items];
     const currentText = newItems[index].text.trim();
-    
+
+    const members = {
+      po: data.po || '',
+      sm: data.sm || '',
+      devs: data.devs || '',
+      stakeholders: data.stakeholders || ''
+    };
+
     setIsAiLoading(true);
     try {
       const response = await fetch('/api/ai-rewrite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey, fieldType, currentText, poIdea })
+        body: JSON.stringify({ apiKey, fieldType, currentText, poIdea, members })
       });
 
       if (!response.ok) {

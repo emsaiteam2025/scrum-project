@@ -27,11 +27,12 @@ export default function Backlog() {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isPhotoRestoring, setIsPhotoRestoring] = useState(false);
   const [poName, setPoName] = useState<string>('');
+  const [mobileStatusFilter, setMobileStatusFilter] = useState<'all' | 'todo' | 'doing' | 'done'>('all');
   const photoRestoredAt = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const deletedPbiIds = useRef<Set<string>>(new Set());
 
-  const { data, updateData, loading, forceSave, saveStatus } = useAutoSave('backlog', {
+  const { data, updateData, syncData, loading, forceSave, saveStatus } = useAutoSave('backlog', {
     sprintDays: 30 as number | string,
     tasks: initialTasks,
     sprintGoal: '',
@@ -44,6 +45,14 @@ export default function Backlog() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const setTasks = (valOrFn: Task[] | ((prev: Task[]) => Task[])) => {
     updateData((prevData: {tasks: Task[]}) => ({
+      tasks: typeof valOrFn === 'function' ? valOrFn(prevData.tasks) : valOrFn
+    }));
+  };
+
+  // 背景同步用：不觸發 isDirty，避免 Planning sync 每 5 秒寫入 Firebase
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const setSyncTasks = (valOrFn: Task[] | ((prev: Task[]) => Task[])) => {
+    syncData((prevData: {tasks: Task[]}) => ({
       tasks: typeof valOrFn === 'function' ? valOrFn(prevData.tasks) : valOrFn
     }));
   };
@@ -88,17 +97,17 @@ export default function Backlog() {
         if (planningData) {
           if (planningData.devs) {
             const devsArray = planningData.devs.split(/[,、，\n]/).map((d: string) => d.trim()).filter((d: string) => d);
-            // 避免 Viewer 觸發 updateData 導致報錯
+            // 避免 Viewer 觸發 syncData 導致報錯
             if (!isPublicViewer || auth.currentUser) {
-               updateData({ devsList: devsArray });
+               syncData({ devsList: devsArray });
             }
           }
 
           if (planningData.whats) {
           const whats = planningData.whats.filter((w: {id: string, text: string}) => w.text && w.text.trim() !== '');
-          
+
           if (!isPublicViewer || auth.currentUser) {
-          setTasks(prev => {
+          setSyncTasks(prev => {
             let newPbis = prev.filter(t => t.type === 'pbi');
             const tasksList = prev.filter(t => t.type === 'task');
             
@@ -466,6 +475,18 @@ export default function Backlog() {
     setTasks((prev: Task[]) => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
   };
 
+  const copyTask = (id: string) => {
+    setTasks((prev: Task[]) => {
+      const index = prev.findIndex(t => t.id === id);
+      if (index === -1) return prev;
+      const original = prev[index];
+      const copied: Task = { ...original, id: `${original.type}-${Date.now()}` };
+      const newTasks = [...prev];
+      newTasks.splice(index + 1, 0, copied);
+      return newTasks;
+    });
+  };
+
   
   const renderTasks = (status: Task['status'], pbiId?: string) => {
     // If we're rendering a specific PBI group, only show tasks belonging to it
@@ -533,6 +554,7 @@ export default function Backlog() {
               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 absolute top-2 right-2 bg-white/80 p-1 rounded-lg shadow-sm z-10">
                 <button onClick={() => moveTask(task.id, -1)} className="text-gray-500 hover:text-gray-700 bg-gray-50 p-1.5 rounded-md text-xs font-bold" title="向上排序">🔼</button>
                 <button onClick={() => moveTask(task.id, 1)} className="text-gray-500 hover:text-gray-700 bg-gray-50 p-1.5 rounded-md text-xs font-bold" title="向下排序">🔽</button>
+                <button onClick={() => copyTask(task.id)} className="text-emerald-500 hover:text-emerald-700 bg-emerald-50 p-1.5 rounded-md" title="複製">📋</button>
                 <button onClick={() => setEditingTaskId(task.id)} className="text-blue-500 hover:text-blue-700 bg-blue-50 p-1.5 rounded-md" title="編輯">✏️</button>
                 <button onClick={() => deleteTask(task.id)} className="text-red-500 hover:text-red-700 bg-red-50 p-1.5 rounded-md" title="刪除">🗑️</button>
               </div>
@@ -662,7 +684,7 @@ export default function Backlog() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
+    <main className="min-h-screen bg-[#f4f1ea] p-4 md:p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
       <div className="max-w-[1400px] mx-auto space-y-8">
 
         <div className="flex flex-col items-center">
@@ -709,8 +731,358 @@ export default function Backlog() {
           </div>
         </section>
 
-        {/* 看板區域 (Kanban Board) */}
-        <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden flex flex-col" style={{ minHeight: '650px' }}>
+        {/* 完成進度 */}
+        {(() => {
+          const allTasks = tasks.filter(t => t.type === 'task');
+          const pbis = tasks.filter(t => t.status === 'pbi');
+          if (allTasks.length === 0 && pbis.length === 0) return null;
+          const todo = allTasks.filter(t => t.status === 'todo').length;
+          const doing = allTasks.filter(t => t.status === 'doing').length;
+          const done = allTasks.filter(t => t.status === 'done').length;
+          const total = allTasks.length;
+          const pct = (n: number) => total > 0 ? Math.round(n / total * 100) : 0;
+          return (
+            <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden">
+              <div className="bg-[#8fb996] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white tracking-wider flex items-center gap-2 drop-shadow-sm">
+                <span>📊</span> 任務完成進度
+              </div>
+              <div className="p-4 md:p-6 space-y-6">
+
+                {/* 整體進度 */}
+                {total > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-end justify-between">
+                      <div className="font-bold text-[#5b755e] text-base md:text-lg">整體完成率</div>
+                      <div className="text-3xl font-bold text-[#4a7c59]">{pct(done)}%</div>
+                    </div>
+                    {/* 堆疊式進度條 */}
+                    <div className="w-full h-6 rounded-full bg-[#e8e4d9] overflow-hidden flex border-2 border-[#b5a695]">
+                      {done > 0 && <div style={{ width: `${pct(done)}%` }} className="bg-[#8fb996] h-full transition-all duration-500" />}
+                      {doing > 0 && <div style={{ width: `${pct(doing)}%` }} className="bg-[#d4a373] h-full transition-all duration-500" />}
+                      {todo > 0 && <div style={{ width: `${pct(todo)}%` }} className="bg-[#e6b1b1] h-full transition-all duration-500" />}
+                    </div>
+                    {/* 圖例 */}
+                    <div className="flex gap-3 text-xs font-bold text-[#8a7f72]">
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-[#8fb996] inline-block" />完成</span>
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-[#d4a373] inline-block" />進行中</span>
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-[#e6b1b1] inline-block" />待處理</span>
+                    </div>
+                    {/* 數字卡片 */}
+                    <div className="grid grid-cols-3 gap-2 md:gap-3">
+                      <div className="bg-[#e8eedd] border-2 border-[#a5c2a8] rounded-xl p-3 text-center">
+                        <div className="text-2xl font-bold text-[#4a7c59]">{done}</div>
+                        <div className="text-xs font-bold text-[#5b755e] mt-1">✅ 完成</div>
+                        <div className="text-[10px] text-[#8a7f72]">{pct(done)}%</div>
+                      </div>
+                      <div className="bg-[#faebce] border-2 border-[#e6c98a] rounded-xl p-3 text-center">
+                        <div className="text-2xl font-bold text-[#d4a373]">{doing}</div>
+                        <div className="text-xs font-bold text-[#d4a373] mt-1">⚡ 進行中</div>
+                        <div className="text-[10px] text-[#8a7f72]">{pct(doing)}%</div>
+                      </div>
+                      <div className="bg-[#fceded] border-2 border-[#e6b1b1] rounded-xl p-3 text-center">
+                        <div className="text-2xl font-bold text-[#c96262]">{todo}</div>
+                        <div className="text-xs font-bold text-[#c96262] mt-1">📋 待處理</div>
+                        <div className="text-[10px] text-[#8a7f72]">{pct(todo)}%</div>
+                      </div>
+                    </div>
+                    <div className="text-xs text-[#8a7f72] text-right font-bold">共 {total} 個任務</div>
+                  </div>
+                )}
+
+                {/* PBI 逐項進度表 */}
+                {pbis.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="font-bold text-[#6b5e50] border-b-2 border-[#e8d5b5] pb-2">PBI 逐項進度</div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm min-w-[380px]">
+                        <thead>
+                          <tr className="border-b-2 border-[#e8d5b5] bg-[#faf8f5]">
+                            <th className="text-left py-2 px-3 text-[#6b5e50] font-bold">PBI 項目</th>
+                            <th className="text-center py-2 px-2 text-[#c96262] font-bold w-14">待</th>
+                            <th className="text-center py-2 px-2 text-[#d4a373] font-bold w-14">行</th>
+                            <th className="text-center py-2 px-2 text-[#4a7c59] font-bold w-14">完</th>
+                            <th className="py-2 px-3 text-[#6b5e50] font-bold">進度</th>
+                            <th className="text-center py-2 px-2 text-[#9b596f] font-bold w-12">驗收</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {pbis.map(pbi => {
+                            const pt = allTasks.filter(t => t.pbiId === pbi.id);
+                            const pt_todo = pt.filter(t => t.status === 'todo').length;
+                            const pt_doing = pt.filter(t => t.status === 'doing').length;
+                            const pt_done = pt.filter(t => t.status === 'done').length;
+                            const pt_total = pt.length;
+                            const pt_pct = pt_total > 0 ? Math.round(pt_done / pt_total * 100) : 0;
+                            const pt_doing_pct = pt_total > 0 ? Math.round(pt_doing / pt_total * 100) : 0;
+                            return (
+                              <tr key={pbi.id} className="border-b border-[#f0ebe4] hover:bg-[#faf8f5] transition-colors">
+                                <td className="py-3 px-3 max-w-[140px] md:max-w-[220px]">
+                                  <div className="font-bold text-[#3e362e] text-xs leading-tight truncate" title={pbi.title}>{pbi.title || '(未命名)'}</div>
+                                </td>
+                                <td className="text-center py-3 px-2">
+                                  <span className={`text-sm font-bold ${pt_todo > 0 ? 'text-[#c96262]' : 'text-[#d3cbbd]'}`}>{pt_todo}</span>
+                                </td>
+                                <td className="text-center py-3 px-2">
+                                  <span className={`text-sm font-bold ${pt_doing > 0 ? 'text-[#d4a373]' : 'text-[#d3cbbd]'}`}>{pt_doing}</span>
+                                </td>
+                                <td className="text-center py-3 px-2">
+                                  <span className={`text-sm font-bold ${pt_done > 0 ? 'text-[#4a7c59]' : 'text-[#d3cbbd]'}`}>{pt_done}</span>
+                                </td>
+                                <td className="py-3 px-3">
+                                  {pt_total > 0 ? (
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex-1 h-2.5 rounded-full bg-[#e8e4d9] overflow-hidden flex border border-[#d3cbbd]">
+                                        {pt_done > 0 && <div style={{ width: `${pt_pct}%` }} className="bg-[#8fb996] h-full" />}
+                                        {pt_doing > 0 && <div style={{ width: `${pt_doing_pct}%` }} className="bg-[#d4a373] h-full" />}
+                                      </div>
+                                      <span className="text-xs font-bold text-[#5b755e] w-8 text-right shrink-0">{pt_pct}%</span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-[#d3cbbd]">尚無任務</span>
+                                  )}
+                                </td>
+                                <td className="text-center py-3 px-2">
+                                  {pbi.acceptedBy ? <span title={`${pbi.acceptedBy} ${pbi.acceptedAt}`}>✅</span> : <span className="text-[#d3cbbd]">○</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {/* 無歸屬任務列 */}
+                          {(() => {
+                            const ut = allTasks.filter(t => !t.pbiId);
+                            if (ut.length === 0) return null;
+                            const ut_todo = ut.filter(t => t.status === 'todo').length;
+                            const ut_doing = ut.filter(t => t.status === 'doing').length;
+                            const ut_done = ut.filter(t => t.status === 'done').length;
+                            const ut_total = ut.length;
+                            const ut_pct = ut_total > 0 ? Math.round(ut_done / ut_total * 100) : 0;
+                            const ut_doing_pct = ut_total > 0 ? Math.round(ut_doing / ut_total * 100) : 0;
+                            return (
+                              <tr className="border-b border-[#f0ebe4] bg-[#f9f7f4]">
+                                <td className="py-3 px-3">
+                                  <div className="font-bold text-[#8a7f72] text-xs italic">無歸屬任務</div>
+                                </td>
+                                <td className="text-center py-3 px-2"><span className={`text-sm font-bold ${ut_todo > 0 ? 'text-[#c96262]' : 'text-[#d3cbbd]'}`}>{ut_todo}</span></td>
+                                <td className="text-center py-3 px-2"><span className={`text-sm font-bold ${ut_doing > 0 ? 'text-[#d4a373]' : 'text-[#d3cbbd]'}`}>{ut_doing}</span></td>
+                                <td className="text-center py-3 px-2"><span className={`text-sm font-bold ${ut_done > 0 ? 'text-[#4a7c59]' : 'text-[#d3cbbd]'}`}>{ut_done}</span></td>
+                                <td className="py-3 px-3">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 h-2.5 rounded-full bg-[#e8e4d9] overflow-hidden flex border border-[#d3cbbd]">
+                                      {ut_done > 0 && <div style={{ width: `${ut_pct}%` }} className="bg-[#8fb996] h-full" />}
+                                      {ut_doing > 0 && <div style={{ width: `${ut_doing_pct}%` }} className="bg-[#d4a373] h-full" />}
+                                    </div>
+                                    <span className="text-xs font-bold text-[#5b755e] w-8 text-right shrink-0">{ut_pct}%</span>
+                                  </div>
+                                </td>
+                                <td className="text-center py-3 px-2"><span className="text-[#d3cbbd]">—</span></td>
+                              </tr>
+                            );
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          );
+        })()}
+
+        {/* 手機版任務看板 */}
+        <section className="md:hidden bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden">
+          <div className="bg-[#76a5af] border-b-4 border-[#5b755e] p-4">
+            <div className="flex items-center gap-2 text-white font-bold text-lg mb-3"><span>🎏</span> 任務看板</div>
+            <div className="flex gap-2 flex-wrap">
+              <button onClick={() => fileInputRef.current?.click()} disabled={isPhotoRestoring} className="bg-[#fffdf9] text-[#467386] border-2 border-[#76a5af] px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1 disabled:opacity-50">
+                {isPhotoRestoring ? '🔍 解析中...' : '📸 從照片還原'}
+              </button>
+              <button onClick={() => { const newId = `pbi-${Date.now()}`; setTasks([{ id: newId, type: 'pbi', status: 'pbi', title: '', desc: '', role: '', time: '' }, ...tasks]); setEditingTaskId(newId); }} className="bg-[#fffdf9] text-[#8b5a2b] border-2 border-[#d4a373] px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1">🍄 新增 PBI</button>
+              <button onClick={() => { const newId = `task-${Date.now()}`; setTasks([{ id: newId, type: 'task', status: 'todo', title: '', desc: '', role: '', time: '' }, ...tasks]); setEditingTaskId(newId); }} className="bg-[#fffdf9] text-[#76a5af] border-2 border-[#5b755e] px-3 py-1.5 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1">🌱 新增任務</button>
+            </div>
+          </div>
+
+          {/* 狀態篩選 Tabs */}
+          <div className="flex border-b-2 border-[#b5a695] bg-[#f4f1ea] sticky top-0 z-10">
+            {([
+              { key: 'all', label: '全部', active: 'text-[#5b755e] border-[#5b755e] bg-white' },
+              { key: 'todo', label: 'TO DO', active: 'text-[#c96262] border-[#c96262] bg-white' },
+              { key: 'doing', label: '進行中', active: 'text-[#d4a373] border-[#d4a373] bg-white' },
+              { key: 'done', label: '完成', active: 'text-[#4a7c59] border-[#4a7c59] bg-white' },
+            ] as const).map(tab => (
+              <button key={tab.key} onClick={() => setMobileStatusFilter(tab.key)} className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-colors ${mobileStatusFilter === tab.key ? tab.active : 'text-[#8a7f72] border-transparent'}`}>{tab.label}</button>
+            ))}
+          </div>
+
+          <div className="p-3 space-y-4">
+            {tasks.filter(t => t.status === 'pbi').map(pbi => {
+              const pbiTasks = tasks.filter(t => t.type === 'task' && t.pbiId === pbi.id);
+              const filtered = mobileStatusFilter === 'all' ? pbiTasks : pbiTasks.filter(t => t.status === mobileStatusFilter);
+              if (mobileStatusFilter !== 'all' && filtered.length === 0) return null;
+              const isEditingPbi = editingTaskId === pbi.id;
+              return (
+                <div key={pbi.id} className="border-2 border-[#d4a373] rounded-2xl overflow-hidden">
+                  {/* PBI 標頭 */}
+                  <div className="bg-[#f2e3c6] p-3">
+                    {isEditingPbi ? (
+                      <div className="space-y-2">
+                        <input type="text" value={pbi.title} onChange={e => updateTask(pbi.id, 'title', e.target.value)} className="w-full text-sm font-bold p-2 border-2 border-[#b5a695] rounded" placeholder="PBI 標題" />
+                        <textarea value={pbi.desc || ''} onChange={e => updateTask(pbi.id, 'desc', e.target.value)} className="w-full text-xs p-2 border-2 border-[#b5a695] rounded" rows={2} placeholder="PBI 描述說明 (選填)" />
+                        <button onClick={() => { setEditingTaskId(null); setTimeout(() => forceSave && forceSave(), 50); }} className="w-full bg-[#5b755e] text-white text-xs font-bold py-2 rounded">完成</button>
+                      </div>
+                    ) : (
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded border text-[#8b5a2b] bg-[#faebce] border-[#d4a373]">PBI</span>
+                          <div className="font-bold text-sm text-[#3e362e] mt-1 break-words">{pbi.title || '(未命名)'}</div>
+                          {pbi.desc && <div className="text-xs text-[#6b5e50] mt-0.5 break-words">{pbi.desc}</div>}
+                        </div>
+                        <div className="flex gap-1 flex-shrink-0">
+                          <button onClick={() => handleAiGenerateTasks(pbi.id, pbi.title)} disabled={isAiLoading} className="text-[#a28bd4] bg-white border border-[#a28bd4] p-1.5 rounded-md text-xs disabled:opacity-50" title="AI拆解">🤖</button>
+                          <button onClick={() => copyTask(pbi.id)} className="text-emerald-500 bg-emerald-50 p-1.5 rounded-md text-sm" title="複製">📋</button>
+                          <button onClick={() => setEditingTaskId(pbi.id)} className="text-blue-500 bg-blue-50 p-1.5 rounded-md text-sm" title="編輯">✏️</button>
+                          <button onClick={() => deleteTask(pbi.id)} className="text-red-500 bg-red-50 p-1.5 rounded-md text-sm" title="刪除">🗑️</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {/* 任務清單 */}
+                  <div className="p-2 space-y-2 bg-white">
+                    <button onClick={() => { const newId = `task-${Date.now()}`; setTasks(prev => [{ id: newId, type: 'task', status: 'todo', title: '', desc: '', role: '', time: '', pbiId: pbi.id }, ...prev]); setEditingTaskId(newId); }} className="w-full text-xs font-bold bg-[#fceded] text-[#c96262] border border-[#e6b1b1] px-3 py-1.5 rounded-lg flex items-center justify-center gap-1">➕ 建立任務</button>
+                    {filtered.length === 0 ? (
+                      <div className="text-center text-xs text-[#b5a695] py-2">此 PBI 尚無任務</div>
+                    ) : filtered.map(task => {
+                      const isEditing = editingTaskId === task.id;
+                      const sC: Record<string,string> = { todo:'bg-[#fceded] text-[#c96262] border-[#e6b1b1]', doing:'bg-[#faebce] text-[#d4a373] border-[#e6c98a]', done:'bg-[#e8eedd] text-[#4a7c59] border-[#a5c2a8]' };
+                      const sL: Record<string,string> = { todo:'TO DO', doing:'進行中', done:'完成' };
+                      return (
+                        <div key={task.id} className="border-2 border-[#b5a695] rounded-xl p-3 bg-[#fffdf9]">
+                          {isEditing ? (
+                            <div className="space-y-2">
+                              <input type="text" value={task.title} onChange={e => updateTask(task.id,'title',e.target.value)} className="w-full text-sm font-bold p-2 border-2 border-[#b5a695] rounded" placeholder="任務標題" />
+                              <textarea value={task.desc||''} onChange={e => updateTask(task.id,'desc',e.target.value)} className="w-full text-xs p-2 border-2 border-[#b5a695] rounded" rows={2} placeholder="任務說明 (選填)" />
+                              <div className="flex gap-2">
+                                <input type="text" value={task.role||''} onChange={e => updateTask(task.id,'role',e.target.value)} className="flex-1 text-xs p-2 border-2 border-[#b5a695] rounded" placeholder="負責人" />
+                                <input type="text" value={task.time||''} onChange={e => updateTask(task.id,'time',e.target.value)} className="flex-1 text-xs p-2 border-2 border-[#b5a695] rounded" placeholder="工時" />
+                              </div>
+                              {data.devsList && data.devsList.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {data.devsList.map((dev:string) => {
+                                    const cur=(task.role||'').split(',').map((r:string)=>r.trim()).filter((r:string)=>r);
+                                    const sel=cur.includes(dev);
+                                    return <button key={dev} type="button" onClick={()=>updateTask(task.id,'role',sel?cur.filter((r:string)=>r!==dev).join(', '):[...cur,dev].join(', '))} className={`text-[10px] font-bold px-2 py-1 rounded-md border ${sel?'bg-[#5b755e] text-white border-[#5b755e]':'bg-[#e8eedd] text-[#5b755e] border-[#a5c2a8]'}`}>{dev} {sel?'✓':'+'}</button>;
+                                  })}
+                                </div>
+                              )}
+                              <select value={task.status} onChange={e => updateTask(task.id,'status',e.target.value)} className="w-full text-xs p-2 border-2 border-[#b5a695] rounded bg-white text-[#6b5e50]">
+                                <option value="todo">TO DO（待處理）</option>
+                                <option value="doing">進行中</option>
+                                <option value="done">已完成</option>
+                              </select>
+                              <div className="flex gap-2">
+                                <button onClick={()=>{if(!task.title.trim())updateTask(task.id,'title','未命名項目');setEditingTaskId(null);setTimeout(()=>forceSave&&forceSave(),50);}} className="flex-1 bg-[#8fb996] text-white text-xs font-bold py-2 rounded">確認張貼</button>
+                                <button onClick={()=>{if(!task.title.trim())deleteTask(task.id);setEditingTaskId(null);}} className="bg-[#fceded] text-[#c96262] text-xs font-bold px-3 py-2 rounded">取消</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex justify-between items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-bold text-sm text-[#3e362e] break-words">{task.title}</div>
+                                {task.desc && <div className="text-xs text-[#6b5e50] mt-0.5 break-words whitespace-pre-wrap">{task.desc}</div>}
+                                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${sC[task.status]}`}>{sL[task.status]}</span>
+                                  {task.role && <span className="text-[10px] font-bold text-[#5b755e] bg-[#e8eedd] px-1.5 py-0.5 rounded">{task.role}</span>}
+                                  {task.time && <span className="text-[10px] text-[#8a7f72] font-bold">{task.time}</span>}
+                                </div>
+                              </div>
+                              <div className="flex gap-1 flex-shrink-0">
+                                <button onClick={()=>copyTask(task.id)} className="text-emerald-500 bg-emerald-50 p-1.5 rounded-md text-sm" title="複製">📋</button>
+                                <button onClick={()=>setEditingTaskId(task.id)} className="text-blue-500 bg-blue-50 p-1.5 rounded-md text-sm" title="編輯">✏️</button>
+                                <button onClick={()=>deleteTask(task.id)} className="text-red-500 bg-red-50 p-1.5 rounded-md text-sm" title="刪除">🗑️</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* 驗收區 */}
+                  {pbi.acceptedBy ? (
+                    <div className="bg-[#fff0f5] border-t-2 border-[#d4a373] p-2 flex items-center justify-between">
+                      <div className="text-xs font-bold text-[#9b596f]">✅ 已驗收：{pbi.acceptedBy}（{pbi.acceptedAt}）</div>
+                      <button onClick={()=>setTasks(prev=>prev.map(t=>t.id===pbi.id?{...t,acceptedBy:undefined,acceptedAt:undefined}:t))} className="text-[10px] text-[#9b596f] underline ml-2">取消驗收</button>
+                    </div>
+                  ) : poName ? (
+                    <div className="border-t-2 border-[#d4a373] p-2">
+                      <button onClick={()=>acceptPbi(pbi.id)} className="w-full bg-[#9b596f] text-white text-xs font-bold py-2 rounded-xl">✅ 驗收確認</button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+
+            {/* 無歸屬任務 */}
+            {(() => {
+              const unassigned = tasks.filter(t => t.type === 'task' && !t.pbiId);
+              const filtered = mobileStatusFilter === 'all' ? unassigned : unassigned.filter(t => t.status === mobileStatusFilter);
+              if (filtered.length === 0) return null;
+              return (
+                <div className="border-2 border-[#b5a695] rounded-2xl overflow-hidden">
+                  <div className="bg-[#e8e4d9] p-3 font-bold text-sm text-[#6b5e50]">無歸屬任務</div>
+                  <div className="p-2 space-y-2 bg-white">
+                    {filtered.map(task => {
+                      const isEditing = editingTaskId === task.id;
+                      const sC: Record<string,string> = { todo:'bg-[#fceded] text-[#c96262] border-[#e6b1b1]', doing:'bg-[#faebce] text-[#d4a373] border-[#e6c98a]', done:'bg-[#e8eedd] text-[#4a7c59] border-[#a5c2a8]' };
+                      const sL: Record<string,string> = { todo:'TO DO', doing:'進行中', done:'完成' };
+                      return (
+                        <div key={task.id} className="border-2 border-[#b5a695] rounded-xl p-3 bg-[#fffdf9]">
+                          {isEditing ? (
+                            <div className="space-y-2">
+                              <input type="text" value={task.title} onChange={e=>updateTask(task.id,'title',e.target.value)} className="w-full text-sm font-bold p-2 border-2 border-[#b5a695] rounded" placeholder="任務標題" />
+                              <textarea value={task.desc||''} onChange={e=>updateTask(task.id,'desc',e.target.value)} className="w-full text-xs p-2 border-2 border-[#b5a695] rounded" rows={2} placeholder="任務說明 (選填)" />
+                              <div className="flex gap-2">
+                                <input type="text" value={task.role||''} onChange={e=>updateTask(task.id,'role',e.target.value)} className="flex-1 text-xs p-2 border-2 border-[#b5a695] rounded" placeholder="負責人" />
+                                <input type="text" value={task.time||''} onChange={e=>updateTask(task.id,'time',e.target.value)} className="flex-1 text-xs p-2 border-2 border-[#b5a695] rounded" placeholder="工時" />
+                              </div>
+                              <select value={task.status} onChange={e=>updateTask(task.id,'status',e.target.value)} className="w-full text-xs p-2 border-2 border-[#b5a695] rounded bg-white text-[#6b5e50]">
+                                <option value="todo">TO DO（待處理）</option>
+                                <option value="doing">進行中</option>
+                                <option value="done">已完成</option>
+                              </select>
+                              <div className="flex gap-2">
+                                <button onClick={()=>{if(!task.title.trim())updateTask(task.id,'title','未命名項目');setEditingTaskId(null);setTimeout(()=>forceSave&&forceSave(),50);}} className="flex-1 bg-[#8fb996] text-white text-xs font-bold py-2 rounded">確認張貼</button>
+                                <button onClick={()=>{if(!task.title.trim())deleteTask(task.id);setEditingTaskId(null);}} className="bg-[#fceded] text-[#c96262] text-xs font-bold px-3 py-2 rounded">取消</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex justify-between items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-bold text-sm text-[#3e362e] break-words">{task.title}</div>
+                                {task.desc && <div className="text-xs text-[#6b5e50] mt-0.5 break-words whitespace-pre-wrap">{task.desc}</div>}
+                                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${sC[task.status]}`}>{sL[task.status]}</span>
+                                  {task.role && <span className="text-[10px] font-bold text-[#5b755e] bg-[#e8eedd] px-1.5 py-0.5 rounded">{task.role}</span>}
+                                  {task.time && <span className="text-[10px] text-[#8a7f72] font-bold">{task.time}</span>}
+                                </div>
+                              </div>
+                              <div className="flex gap-1 flex-shrink-0">
+                                <button onClick={()=>copyTask(task.id)} className="text-emerald-500 bg-emerald-50 p-1.5 rounded-md text-sm" title="複製">📋</button>
+                                <button onClick={()=>setEditingTaskId(task.id)} className="text-blue-500 bg-blue-50 p-1.5 rounded-md text-sm" title="編輯">✏️</button>
+                                <button onClick={()=>deleteTask(task.id)} className="text-red-500 bg-red-50 p-1.5 rounded-md text-sm" title="刪除">🗑️</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </section>
+
+        {/* 看板區域 (Kanban Board) - 桌面版 */}
+        <section className="hidden md:flex bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden flex-col" style={{ minHeight: '650px' }}>
           <div className="bg-[#76a5af] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white flex justify-between items-center tracking-wider drop-shadow-sm">
             <div className="flex items-center gap-2">
               <span>🎏</span> <ScrumTooltip keyword="Sprint Backlog" text="任務看板 (Sprint Backlog)" />
@@ -804,6 +1176,7 @@ export default function Backlog() {
                                       <div className="opacity-0 group-hover/task:opacity-100 transition-opacity flex gap-1 absolute top-2 right-2 bg-white/80 p-1 rounded-lg shadow-sm z-10">
                                         <button onClick={() => moveTask(task.id, -1)} className="text-gray-500 hover:text-gray-700 bg-gray-50 p-1.5 rounded-md text-xs font-bold" title="向上排序">🔼</button>
                                         <button onClick={() => moveTask(task.id, 1)} className="text-gray-500 hover:text-gray-700 bg-gray-50 p-1.5 rounded-md text-xs font-bold" title="向下排序">🔽</button>
+                                        <button onClick={() => copyTask(task.id)} className="text-emerald-500 hover:text-emerald-700 bg-emerald-50 p-1.5 rounded-md" title="複製">📋</button>
                                         <button onClick={() => setEditingTaskId(task.id)} className="text-blue-500 hover:text-blue-700 bg-blue-50 p-1.5 rounded-md" title="編輯">✏️</button>
                                         <button onClick={() => deleteTask(task.id)} className="text-red-500 hover:text-red-700 bg-red-50 p-1.5 rounded-md" title="刪除">🗑️</button>
                                       </div>

@@ -23,10 +23,44 @@ export default function DailyScrum() {
   const dailyNotesQ3 = data.dailyNotesQ3 || {};
   const [activeDay, setActiveDay] = useState<number | null>(null);
 
+  const [sprintStartDate, setSprintStartDate] = useState<string>('');
+
   useEffect(() => {
     const savedDays = localStorage.getItem('sprintDays');
     setSprintDays(savedDays ? Number(savedDays) : 30);
   }, []);
+
+  useEffect(() => {
+    const sprintId = localStorage.getItem('currentSprintId');
+    if (!sprintId) return;
+    const load = async () => {
+      try {
+        const { doc, getDoc } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+        const snap = await getDoc(doc(db, 'sprints', sprintId));
+        if (snap.exists() && snap.data().planning?.startDate) {
+          setSprintStartDate(snap.data().planning.startDate);
+        }
+      } catch {}
+    };
+    load();
+  }, []);
+
+  const WEEKDAYS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+
+  const getDayDate = (dayIndex: number): string => {
+    if (!sprintStartDate) return '';
+    const base = new Date(sprintStartDate);
+    base.setDate(base.getDate() + dayIndex);
+    return `${base.getMonth() + 1}/${base.getDate()}`;
+  };
+
+  const getDayOfWeek = (dayIndex: number): string => {
+    if (!sprintStartDate) return '';
+    const base = new Date(sprintStartDate);
+    base.setDate(base.getDate() + dayIndex);
+    return WEEKDAYS[base.getDay()];
+  };
 
   // 本地 derive：若 Firebase 尚未有 completedDays 或長度不對，給預設值
   // 不呼叫 updateData，避免誤觸 isDirty 導致 Firebase 資料被空值覆蓋
@@ -97,29 +131,41 @@ export default function DailyScrum() {
             <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-4">
               {Array.from({ length: sprintDays }).map((_, i) => {
                 const isChecked = completedDays[i];
+                const dow = getDayOfWeek(i);
+                const isWeekend = dow === '週六' || dow === '週日';
                 return (
-                  
+
                   <div key={i} className={`transition-all duration-300 ${activeDay === i ? 'col-span-full' : ''}`}>
-                  <div 
+                  <div
                     onClick={() => toggleDay(i)}
                     className={`border-4 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group relative overflow-hidden min-h-[120px]
-                      ${isChecked 
-                        ? 'bg-[#8fb996] border-[#5b755e] shadow-md' 
-                        : 'bg-[#e8eedd] border-[#a5c2a8] hover:bg-[#dcedc1] hover:-translate-y-1 hover:shadow-md'
+                      ${isChecked
+                        ? isWeekend ? 'bg-[#c9637a] border-[#a04060] shadow-md' : 'bg-[#8fb996] border-[#5b755e] shadow-md'
+                        : isWeekend ? 'bg-[#f5d0d8] border-[#e8a0b0] hover:bg-[#f0bbc8] hover:-translate-y-1 hover:shadow-md' : 'bg-[#e8eedd] border-[#a5c2a8] hover:bg-[#dcedc1] hover:-translate-y-1 hover:shadow-md'
                       }
                       ${activeDay === i ? 'ring-4 ring-[#e07a5f] scale-[1.02]' : ''}
                       `}
                   >
-                    <div 
-                      className={`absolute top-3 right-3 flex items-center justify-center w-6 h-6 rounded border-2 z-20 cursor-pointer ${isChecked ? 'bg-white border-white text-[#5b755e]' : 'border-[#8a7f72] bg-white hover:border-[#5b755e]'}`} 
+                    <div
+                      className={`absolute top-3 right-3 flex items-center justify-center w-6 h-6 rounded border-2 z-20 cursor-pointer ${isChecked ? 'bg-white border-white text-[#5b755e]' : isWeekend ? 'border-[#c9637a] bg-white hover:border-[#a04060]' : 'border-[#8a7f72] bg-white hover:border-[#5b755e]'}`}
                       onClick={(e) => toggleCheck(e, i)}
                       title="標記這天為已完成"
                     >
                       {isChecked && '✓'}
                     </div>
-                    <div className={`font-bold text-lg z-10 transition-transform ${isChecked ? 'text-white' : 'text-[#4a7c59] group-hover:scale-110'}`}>
+                    <div className={`font-bold text-lg z-10 transition-transform ${isChecked ? 'text-white' : isWeekend ? 'text-[#a04060] group-hover:scale-110' : 'text-[#4a7c59] group-hover:scale-110'}`}>
                       Day {i + 1}
                     </div>
+                    {getDayDate(i) && (
+                      <div className={`text-xs font-semibold z-10 mt-0.5 ${isChecked ? 'text-white/80' : isWeekend ? 'text-[#c9637a]' : 'text-[#7a9e7e]'}`}>
+                        {getDayDate(i)}
+                      </div>
+                    )}
+                    {getDayOfWeek(i) && (
+                      <div className={`text-xs z-10 mt-0.5 ${isChecked ? 'text-white/70' : isWeekend ? 'text-[#c9637a]' : 'text-[#9db89f]'}`}>
+                        {getDayOfWeek(i)}
+                      </div>
+                    )}
                     <div className={`text-3xl mt-2 z-10 transition-all ${isChecked ? 'opacity-100 scale-125' : 'opacity-50 group-hover:opacity-100'}`}>
                       {isChecked ? '✅' : '🌱'}
                     </div>
@@ -139,7 +185,7 @@ export default function DailyScrum() {
                   {activeDay === i && (
                     <div className="mt-4 bg-[#f9fcf8] border-4 border-[#8fb996] rounded-2xl p-6 shadow-lg relative ml-2 mr-2">
                       <h3 className="text-[#5b755e] font-bold text-xl mb-4 flex items-center gap-2">
-                        <span>📝</span> Day {i + 1} 執行事項與阻礙紀錄
+                        <span>📝</span> Day {i + 1}{getDayDate(i) ? ` (${getDayDate(i)} ${getDayOfWeek(i)})` : ''} 執行事項與阻礙紀錄
                       </h3>
                       <div className="flex flex-col gap-4">
                         {dailyNotes[i] && !dailyNotesQ1[i] && !dailyNotesQ2[i] && !dailyNotesQ3[i] && (

@@ -1,10 +1,22 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import Navigation from '@/components/Navigation';
 import SaveIndicator from '@/components/SaveIndicator';
 import ScrumTooltip from '@/components/ScrumTooltip';
+
+function AutoGrowTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const resize = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+  };
+  useEffect(() => { resize(); }, [props.value]);
+  return <textarea ref={ref} {...props} onInput={resize} />;
+}
 
 export default function SprintRetrospective() {
   const { data, updateData, loading, saveStatus } = useAutoSave('retrospective', {
@@ -42,18 +54,18 @@ export default function SprintRetrospective() {
         </section>
 
         {/* 三大回顧區塊 */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+
           {/* Keep / Start */}
-          <section className="bg-[#fffdf9] border-4 border-[#8fb996] rounded-3xl shadow-lg overflow-hidden flex flex-col h-full hover:-translate-y-1 transition-transform">
+          <section className="bg-[#fffdf9] border-4 border-[#8fb996] rounded-3xl shadow-lg overflow-hidden hover:-translate-y-1 transition-transform">
             <div className="bg-[#dcedc1] border-b-4 border-[#8fb996] p-4 text-center">
               <div className="text-3xl mb-2">🌱</div>
               <h2 className="text-xl font-bold text-[#4a7c59]">什麼做得好？</h2>
               <div className="text-sm font-bold text-[#6b5e50] mt-1">(Keep / Start)</div>
             </div>
-            <div className="p-6 flex-1 flex flex-col">
-              <textarea 
-                className="flex-1 w-full p-4 bg-[#f9fcf8] border-2 border-[#8fb996] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e] resize-none min-h-[250px]" 
+            <div className="p-6">
+              <AutoGrowTextarea
+                className="block w-full p-4 bg-[#f9fcf8] border-2 border-[#8fb996] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e] resize-none min-h-[250px] overflow-hidden whitespace-pre-wrap break-words"
                 placeholder="記錄團隊本次表現優異、值得保留或開始嘗試的作法..."
                 value={data.keepStart}
                 onChange={e => updateData({ keepStart: e.target.value })}
@@ -62,15 +74,15 @@ export default function SprintRetrospective() {
           </section>
 
           {/* Problem / Stop */}
-          <section className="bg-[#fffdf9] border-4 border-[#c96262] rounded-3xl shadow-lg overflow-hidden flex flex-col h-full hover:-translate-y-1 transition-transform">
+          <section className="bg-[#fffdf9] border-4 border-[#c96262] rounded-3xl shadow-lg overflow-hidden hover:-translate-y-1 transition-transform">
             <div className="bg-[#fceded] border-b-4 border-[#c96262] p-4 text-center">
               <div className="text-3xl mb-2">🍂</div>
               <h2 className="text-xl font-bold text-[#c96262]">什麼需要改善？</h2>
               <div className="text-sm font-bold text-[#8a4231] mt-1">(Problem / Stop)</div>
             </div>
-            <div className="p-6 flex-1 flex flex-col">
-              <textarea 
-                className="flex-1 w-full p-4 bg-[#fdf8f8] border-2 border-[#e6b1b1] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#e6b1b1]/50 shadow-inner font-medium text-[#3e362e] resize-none min-h-[250px]" 
+            <div className="p-6">
+              <AutoGrowTextarea
+                className="block w-full p-4 bg-[#fdf8f8] border-2 border-[#e6b1b1] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#e6b1b1]/50 shadow-inner font-medium text-[#3e362e] resize-none min-h-[250px] overflow-hidden whitespace-pre-wrap break-words"
                 placeholder="記錄遇到的阻礙、問題或需要停止的不良習慣..."
                 value={data.problemStop}
                 onChange={e => updateData({ problemStop: e.target.value })}
@@ -79,16 +91,16 @@ export default function SprintRetrospective() {
           </section>
 
           {/* Action Items */}
-          <section className="bg-[#fffdf9] border-4 border-[#d4a373] rounded-3xl shadow-lg overflow-hidden flex flex-col h-full hover:-translate-y-1 transition-transform">
+          <section className="bg-[#fffdf9] border-4 border-[#d4a373] rounded-3xl shadow-lg overflow-hidden hover:-translate-y-1 transition-transform">
             <div className="bg-[#f2e3c6] border-b-4 border-[#d4a373] p-4 text-center relative overflow-hidden">
               <div className="absolute -top-2 -right-2 text-6xl opacity-20">⭐</div>
               <div className="text-3xl mb-2 relative z-10">🚂</div>
               <h2 className="text-xl font-bold text-[#8b5a2b] relative z-10">挑戰最大效益來改</h2>
               <div className="text-sm font-bold text-[#6b5e50] mt-1 relative z-10">(Action Items)</div>
             </div>
-            <div className="p-6 flex-1 flex flex-col">
-              <textarea 
-                className="flex-1 w-full p-4 bg-[#fcfbf9] border-2 border-[#e8d5b5] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#d4a373]/50 shadow-inner font-medium text-[#3e362e] resize-none min-h-[250px]" 
+            <div className="p-6">
+              <AutoGrowTextarea
+                className="block w-full p-4 bg-[#fcfbf9] border-2 border-[#e8d5b5] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#d4a373]/50 shadow-inner font-medium text-[#3e362e] resize-none min-h-[250px] overflow-hidden whitespace-pre-wrap break-words"
                 placeholder="列出下個 Sprint 的具體改進行動項目..."
                 value={data.actionItems}
                 onChange={e => updateData({ actionItems: e.target.value })}
