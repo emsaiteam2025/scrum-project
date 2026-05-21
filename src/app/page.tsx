@@ -11,6 +11,7 @@ interface Sprint {
   ownerId?: string;
   collaborators?: { email: string; role: 'editor' | 'viewer' }[];
   collaboratorEmails?: string[];
+  sprintStatus?: 'pending' | 'in-progress' | 'completed';
 }
 
 interface SprintDashboard {
@@ -51,20 +52,32 @@ export default function SprintList() {
       if (!loading && !authLoading) {
         const params = new URLSearchParams(window.location.search);
         const targetSprintId = params.get('sprint');
-        
+
         if (targetSprintId) {
+          console.log('[ShareLink] 嘗試開啟專案連結:', targetSprintId, '| 使用者:', user ? user.email : '訪客');
           let targetSprint = sprints.find(s => s.id === targetSprintId);
-          
+          if (targetSprint) {
+            console.log('[ShareLink] 在本地清單找到專案');
+          }
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let fetchError: any = null;
+          let docExists = true;
           if (!targetSprint) {
             // 從 Firebase 單獨抓取該專案 (給擁有連結的人檢視)
             try {
               const docRef = doc(db, 'sprints', targetSprintId);
               const snap = await getDoc(docRef);
-              if (snap.exists()) {
-                targetSprint = snap.data() as Sprint;
+              docExists = snap.exists();
+              console.log('[ShareLink] Firestore 查詢結果 exists =', docExists);
+              if (docExists) {
+                const data = snap.data() as Sprint;
+                // 雲端文件可能未保存 id 欄位，這裡補上 docId 確保後續流程正常
+                targetSprint = { ...data, id: data.id || snap.id };
               }
             } catch (err) {
-              console.error(err);
+              fetchError = err;
+              console.error('[ShareLink] Firestore 讀取失敗:', err);
             }
           }
 
@@ -73,7 +86,21 @@ export default function SprintList() {
             localStorage.setItem('sprintRole_' + targetSprintId, 'viewer_via_link');
             selectSprint(targetSprint.id, targetSprint.name);
           } else {
-            alert('找不到此專案！請確認連結是否正確。');
+            // 區分錯誤類型，給出有意義的提示
+            const code = fetchError?.code || '';
+            if (code === 'permission-denied' || /permission/i.test(fetchError?.message || '')) {
+              if (user) {
+                alert('您沒有權限檢視此專案。請聯絡專案擁有者將您加入協作者。');
+              } else {
+                alert('此專案需要登入才能檢視。請先以 Google 帳號登入後再開啟連結。');
+              }
+            } else if (fetchError) {
+              alert(`讀取專案時發生錯誤：${fetchError?.message || fetchError}\n請檢查網路或 Firebase 設定。`);
+            } else if (!docExists) {
+              alert('找不到此專案！可能已被刪除，或連結不正確。');
+            } else {
+              alert('無法開啟此專案，請稍後再試。');
+            }
             window.history.replaceState({}, '', '/');
           }
         }
@@ -230,6 +257,16 @@ export default function SprintList() {
   };
 
   
+  const updateSprintStatus = async (sprintId: string, newStatus: Sprint['sprintStatus']) => {
+    setSprints(prev => prev.map(s => s.id === sprintId ? { ...s, sprintStatus: newStatus } : s));
+    if (user) {
+      await setDoc(doc(db, 'sprints', sprintId), { sprintStatus: newStatus }, { merge: true });
+    } else {
+      const updated = sprints.map(s => s.id === sprintId ? { ...s, sprintStatus: newStatus } : s);
+      localStorage.setItem('sprints', JSON.stringify(updated));
+    }
+  };
+
   const handleAddCollaborator = async () => {
     if (!shareModalSprint || !shareEmail) return;
     
@@ -446,15 +483,9 @@ export default function SprintList() {
                     const rate = total > 0 ? Math.round(dn / total * 100) : 0;
                     const dgRate = total > 0 ? Math.round(dg / total * 100) : 0;
                     const isOverdue = !!(d?.endDate && new Date(d.endDate) < new Date() && (td > 0 || dg > 0));
-                    const statusInfo = dashLoading
-                      ? { label: '載入中', cls: 'bg-[#f4f1ea] text-[#b5a695]' }
-                      : total === 0
-                        ? { label: '尚無任務', cls: 'bg-[#f4f1ea] text-[#8a7f72]' }
-                        : td === 0 && dg === 0
-                          ? { label: '✅ 已完成', cls: 'bg-[#e8eedd] text-[#4a7c59]' }
-                          : dg > 0
-                            ? { label: '⚡ 進行中', cls: 'bg-[#faebce] text-[#d4a373]' }
-                            : { label: '📋 待開始', cls: 'bg-[#fceded] text-[#c96262]' };
+                    const autoStatus = (total === 0 || dashLoading) ? 'pending' : (td === 0 && dg === 0) ? 'completed' : dg > 0 ? 'in-progress' : 'pending';
+                    const selectStatus = sprint.sprintStatus ?? autoStatus;
+                    const selectCls = selectStatus === 'completed' ? 'bg-[#e8eedd] text-[#4a7c59]' : selectStatus === 'in-progress' ? 'bg-[#faebce] text-[#d4a373]' : 'bg-[#fceded] text-[#c96262]';
                     return (
                       <div key={sprint.id} onClick={() => selectSprint(sprint.id, sprint.name)}
                         className="bg-[#faf8f5] border-2 border-[#e8d5b5] rounded-2xl p-5 cursor-pointer hover:border-[#8fb996] hover:shadow-md transition-all flex flex-col gap-3">
@@ -462,7 +493,16 @@ export default function SprintList() {
                         {/* 名稱 + 狀態 */}
                         <div className="flex justify-between items-start gap-2">
                           <h3 className="font-bold text-[#3e362e] text-base leading-tight flex-1">{sprint.name}</h3>
-                          <span className={`text-xs font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${statusInfo.cls}`}>{statusInfo.label}</span>
+                          <select
+                            value={selectStatus}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => { e.stopPropagation(); updateSprintStatus(sprint.id, e.target.value as Sprint['sprintStatus']); }}
+                            className={`text-xs font-bold px-2 py-1 rounded-full flex-shrink-0 border-0 cursor-pointer outline-none ${selectCls}`}
+                          >
+                            <option value="pending">📋 待開始</option>
+                            <option value="in-progress">⚡ 進行中</option>
+                            <option value="completed">✅ 已完成</option>
+                          </select>
                         </div>
 
                         {/* Sprint 目標 */}
@@ -656,25 +696,28 @@ export default function SprintList() {
                
                <div className="bg-[#e8eedd] border-2 border-[#5b755e] rounded-xl p-4 mb-4">
                   <h3 className="font-bold text-sm text-[#3e362e] mb-2 flex justify-between items-center">
-                    專案專屬網址
-                    <button 
+                    專案專屬網址（公開檢視）
+                    <button
                       onClick={() => {
                         const url = `${window.location.origin}/?sprint=${shareModalSprint.id}`;
                         navigator.clipboard.writeText(url);
-                        alert('已複製連結！取得此連結的人將可以直接進入檢視此專案內容。');
+                        alert('已複製連結！\n任何人（包含未登入訪客）只要取得此連結即可進入檢視此專案內容。');
                       }}
                       className="text-xs bg-white border-2 border-[#5b755e] px-2 py-1 rounded-lg text-[#5b755e] hover:bg-[#5b755e] hover:text-white transition-colors shadow-sm"
                     >
                       📋 複製
                     </button>
                   </h3>
-                  <input 
-                    type="text" 
-                    readOnly 
-                    value={`${typeof window !== 'undefined' ? window.location.origin : ''}/?sprint=${shareModalSprint.id}`} 
+                  <input
+                    type="text"
+                    readOnly
+                    value={`${typeof window !== 'undefined' ? window.location.origin : ''}/?sprint=${shareModalSprint.id}`}
                     className="w-full p-2 border-2 border-[#b5a695] rounded-lg bg-white text-xs text-[#6b5e50] outline-none focus:border-[#5b755e]"
                     onClick={(e) => (e.target as HTMLInputElement).select()}
                   />
+                  <p className="text-[10px] text-[#6b5e50] mt-2 leading-relaxed">
+                    💡 收到此連結的人 <b>不需要登入</b> 就能進入檢視；只有擁有者及下方協作者才能編輯。
+                  </p>
                </div>
 
                <div className="bg-[#f4f1ea] border-2 border-[#b5a695] rounded-xl p-4 mb-4">

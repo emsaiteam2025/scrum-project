@@ -690,6 +690,9 @@ export default function Backlog() {
         <div className="flex flex-col items-center">
           <Navigation />
           <SaveIndicator status={saveStatus} />
+          <div className="text-sm text-[#8a7f72] font-medium mt-1">
+            {new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
+          </div>
         </div>
 
         {/* Loading Overlay */}

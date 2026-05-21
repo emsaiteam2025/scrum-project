@@ -62,12 +62,16 @@ export default function DailyScrum() {
     return WEEKDAYS[base.getDay()];
   };
 
-  // 本地 derive：若 Firebase 尚未有 completedDays 或長度不對，給預設值
-  // 不呼叫 updateData，避免誤觸 isDirty 導致 Firebase 資料被空值覆蓋
-  const completedDays: boolean[] =
-    data.completedDays?.length === sprintDays
-      ? data.completedDays
-      : Array(sprintDays).fill(false);
+  // 本地 derive：若 Firebase 尚未有 completedDays 或長度不對，做 padding/truncate
+  // 保留既有勾選狀態，避免天數變動時所有打勾被清空
+  const completedDays: boolean[] = (() => {
+    const stored = data.completedDays || [];
+    const result = Array(sprintDays).fill(false);
+    for (let i = 0; i < Math.min(stored.length, sprintDays); i++) {
+      result[i] = !!stored[i];
+    }
+    return result;
+  })();
 
   const updateSpecificNote = (index: number, key: 'Q1' | 'Q2' | 'Q3', text: string) => {
     if (key === 'Q1') {
@@ -85,9 +89,13 @@ export default function DailyScrum() {
   
   const toggleCheck = (e: React.MouseEvent, index: number) => {
     e.stopPropagation();
-    const newDays = [...completedDays];
-    newDays[index] = !newDays[index];
-    updateData({ completedDays: newDays });
+    // 從原始 stored 開始，保留超過 sprintDays 的歷史資料，避免縮短週期時遺失
+    const stored = data.completedDays || [];
+    const merged = stored.length >= sprintDays
+      ? [...stored]
+      : [...stored, ...Array(sprintDays - stored.length).fill(false)];
+    merged[index] = !merged[index];
+    updateData({ completedDays: merged });
   };
   return (
     <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">

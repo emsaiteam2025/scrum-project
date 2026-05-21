@@ -199,11 +199,17 @@ export default function Home() {
                 
                 <div className="flex flex-col gap-2">
                   <label className="font-bold text-[#6b5e50]">時間限制 (TIME)</label>
-                  <select className="px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]" value={data.timeLimit} onChange={e => updateData({ timeLimit: e.target.value })}> 
+                  <select className="px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]" value={data.timeLimit} onChange={e => {
+                    const val = e.target.value;
+                    updateData({ timeLimit: val });
+                    const days = val === '30d' ? 30 : Number(val) * 7;
+                    if (days > 0) localStorage.setItem('sprintDays', String(days));
+                  }}>
                     <option value="1">1 週 (≤ 2 小時)</option>
                     <option value="2">2 週 (≤ 4 小時)</option>
                     <option value="3">3 週 (≤ 6 小時)</option>
                     <option value="4">4 週 (≤ 8 小時)</option>
+                    <option value="30d">30 天 (≤ 8 小時)</option>
                   </select>
                 </div>
 
