@@ -21,6 +21,7 @@ function AutoGrowTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElemen
 
 export default function SprintRetrospective() {
   const { data, updateData, loading, saveStatus } = useAutoSave('retrospective', {
+    previousActions: '',
     keepStart: '',
     problemStop: '',
     actionItems: '',
@@ -57,6 +58,22 @@ export default function SprintRetrospective() {
 
         {/* 倒數計時器 */}
         <CountdownTimer />
+
+        {/* 上一次的行動 */}
+        <section className="bg-[#fffdf9] border-4 border-[#b08968] rounded-3xl shadow-lg overflow-hidden">
+          <div className="bg-[#e8d5b5] border-b-4 border-[#b08968] p-4 text-lg font-bold text-[#6b4423] flex items-center gap-2">
+            <span>📜</span> 上一次的行動
+            <span className="text-sm font-normal text-[#8b5a2b] ml-2">（回顧上個 Sprint 承諾的行動項目）</span>
+          </div>
+          <div className="p-6">
+            <AutoGrowTextarea
+              className="block w-full p-4 bg-[#fcf8f3] border-2 border-[#d4b896] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#b08968]/40 shadow-inner font-medium text-[#3e362e] resize-none min-h-[120px] overflow-hidden whitespace-pre-wrap break-words"
+              placeholder="貼上或記錄上一次 Sprint 承諾的行動項目，作為本次回顧的對照基準..."
+              value={data.previousActions}
+              onChange={e => updateData({ previousActions: e.target.value })}
+            />
+          </div>
+        </section>
 
         {/* 三大回顧區塊 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
