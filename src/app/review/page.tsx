@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import SaveIndicator from '@/components/SaveIndicator';
+import CountdownTimer from '@/components/CountdownTimer';
 
 export default function SprintReview() {
   const { data, updateData, loading, saveStatus } = useAutoSave('review', {
@@ -26,6 +27,9 @@ export default function SprintReview() {
 
         {/* Loading Overlay */}
         {loading && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"><div className="bg-white px-6 py-4 rounded-xl font-bold text-[#5b755e] shadow-xl text-lg flex items-center gap-3"><span>💾</span> <span>載入資料中...</span></div></div>}
+
+        {/* 倒數計時器 */}
+        <CountdownTimer />
 
         {/* 內容區塊 */}
         <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden relative">

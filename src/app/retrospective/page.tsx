@@ -5,6 +5,7 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import Navigation from '@/components/Navigation';
 import SaveIndicator from '@/components/SaveIndicator';
 import ScrumTooltip from '@/components/ScrumTooltip';
+import CountdownTimer from '@/components/CountdownTimer';
 
 function AutoGrowTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -22,7 +23,8 @@ export default function SprintRetrospective() {
   const { data, updateData, loading, saveStatus } = useAutoSave('retrospective', {
     keepStart: '',
     problemStop: '',
-    actionItems: ''
+    actionItems: '',
+    actionTracker: ''
   });
 
   return (
@@ -52,6 +54,9 @@ export default function SprintRetrospective() {
             </div>
           </div>
         </section>
+
+        {/* 倒數計時器 */}
+        <CountdownTimer />
 
         {/* 三大回顧區塊 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
@@ -109,6 +114,22 @@ export default function SprintRetrospective() {
           </section>
 
         </div>
+
+        {/* 下一個 Sprint 行動進度追蹤人 */}
+        <section className="bg-[#fffdf9] border-4 border-[#d4a373] rounded-3xl shadow-lg overflow-hidden">
+          <div className="bg-[#f2e3c6] border-b-4 border-[#d4a373] p-4 text-lg font-bold text-[#8b5a2b] flex items-center gap-2">
+            <span>🎯</span> 下一個 Sprint 行動進度追蹤人
+          </div>
+          <div className="p-6">
+            <input
+              type="text"
+              className="w-full px-4 py-3 bg-[#fcfbf9] border-2 border-[#e8d5b5] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#d4a373]/50 shadow-inner font-medium text-[#3e362e]"
+              placeholder="輸入負責追蹤行動進度的成員名稱..."
+              value={data.actionTracker}
+              onChange={e => updateData({ actionTracker: e.target.value })}
+            />
+          </div>
+        </section>
 
         <div className="flex justify-end pt-4">
           <button className="bg-[#8fb996] text-white px-8 py-3 rounded-full font-bold text-lg hover:bg-[#78a07e] hover:-translate-y-1 transition-all duration-200 shadow-lg border-2 border-[#5b755e] inline-flex items-center gap-2">

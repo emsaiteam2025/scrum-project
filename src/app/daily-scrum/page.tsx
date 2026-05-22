@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import SaveIndicator from '@/components/SaveIndicator';
+import CountdownTimer from '@/components/CountdownTimer';
 
 export default function DailyScrum() {
   const [sprintDays, setSprintDays] = useState<number>(30);
@@ -128,6 +129,9 @@ export default function DailyScrum() {
             </div>
           </div>
         </section>
+
+        {/* 倒數計時器 */}
+        <CountdownTimer defaultMinutes={15} />
 
         {/* 動態天數打卡追蹤 */}
         <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden">
