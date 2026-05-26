@@ -5,10 +5,20 @@ import Link from 'next/link';
 
 import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
+import { planningToSprintPlanning, isShallowEqualJSON, type RightPlanning } from '@/lib/planningSync';
 
 export default function Home() {
   const [apiKey, setApiKey] = useState('');
   const [projectName, setProjectName] = useState('');
+
+  const [orgTeam, setOrgTeam] = React.useState<{ id: string; name: string; role: string }[]>([]);
+  const [showDevPicker, setShowDevPicker] = React.useState(false);
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem('orgTeamMembers');
+      if (raw) setOrgTeam(JSON.parse(raw));
+    } catch {}
+  }, []);
 
   const { data, updateData, loading } = useAutoSave('planning', {
     poIdea: '',
@@ -66,10 +76,49 @@ export default function Home() {
   React.useEffect(() => {
     const savedKey = localStorage.getItem('openai_api_key');
     if (savedKey) setApiKey(savedKey);
-    
+
     const savedSprintName = localStorage.getItem('currentSprintName');
     if (savedSprintName) setProjectName(savedSprintName);
   }, []);
+
+  // Mirror: planning → sprintPlanning（scrum-project-new 用的 schema）
+  // 用 1.5s debounce + 內容相等檢查避免迴圈寫入
+  // 優先從 Firestore users/{uid}.currentSprintId 取得 sprintId，解決不同 port localStorage 不同步問題
+  React.useEffect(() => {
+    if (loading) return;
+    const localSprintId = typeof window !== 'undefined' ? localStorage.getItem('currentSprintId') : null;
+    if (!localSprintId) return;
+    const timer = setTimeout(async () => {
+      try {
+        const { doc, getDoc, setDoc, getAuth } = await import('firebase/firestore').then(async (fs) => {
+          const auth = await import('firebase/auth');
+          return { ...fs, getAuth: auth.getAuth };
+        });
+        const { db, app } = await import('@/lib/firebase');
+        const auth = getAuth(app);
+
+        // 用 Firestore users/{uid}.currentSprintId 作為跨 port 共用的 sprintId
+        let sprintId = localSprintId;
+        if (auth.currentUser) {
+          try {
+            const userSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+            const fsSprintId = userSnap.exists() ? userSnap.data().currentSprintId : null;
+            if (fsSprintId) sprintId = fsSprintId;
+          } catch {}
+        }
+
+        const ref = doc(db, 'sprints', sprintId);
+        const snap = await getDoc(ref);
+        const existing = snap.exists() ? snap.data().sprintPlanning : undefined;
+        const mapped = planningToSprintPlanning(data as RightPlanning, existing);
+        if (isShallowEqualJSON(existing, mapped)) return;
+        await setDoc(ref, { sprintPlanning: mapped }, { merge: true });
+      } catch (err) {
+        console.warn('[planningSync] mirror to sprintPlanning failed', err);
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [data, loading]);
 
   const handleProjectNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -293,15 +342,20 @@ export default function Home() {
               <div className="flex-1 flex flex-col gap-4">
                 <label className="font-bold text-[#6b5e50]">與會人</label>
 
+                {/* datalist for member suggestions */}
+                <datalist id="org-members-list">
+                  {orgTeam.map(m => <option key={m.id} value={m.name} />)}
+                </datalist>
+
                 {/* PO / SM */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex flex-col gap-2">
                     <div className="text-sm font-bold text-[#6b5e50]"><ScrumTooltip keyword="PO" text="Product Owner" /> <span className="text-[#c96262]">*</span></div>
-                    <input type="text" value={data.po || ''} onChange={e => updateData({ po: e.target.value })} className="px-3 py-2 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner text-[#3e362e]" placeholder="PO 姓名" />
+                    <input list="org-members-list" type="text" value={data.po || ''} onChange={e => updateData({ po: e.target.value })} className="px-3 py-2 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner text-[#3e362e]" placeholder={orgTeam.length > 0 ? '輸入或從成員庫選取...' : 'PO 姓名'} />
                   </div>
                   <div className="flex flex-col gap-2">
                     <div className="text-sm font-bold text-[#6b5e50]"><ScrumTooltip keyword="SM" text="Scrum Master" /> <span className="text-[#c96262]">*</span></div>
-                    <input type="text" value={data.sm || ''} onChange={e => updateData({ sm: e.target.value })} className="px-3 py-2 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner text-[#3e362e]" placeholder="SM 姓名" />
+                    <input list="org-members-list" type="text" value={data.sm || ''} onChange={e => updateData({ sm: e.target.value })} className="px-3 py-2 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner text-[#3e362e]" placeholder={orgTeam.length > 0 ? '輸入或從成員庫選取...' : 'SM 姓名'} />
                   </div>
                 </div>
 
@@ -309,8 +363,55 @@ export default function Home() {
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
                     <div className="text-sm font-bold text-[#6b5e50]"><ScrumTooltip keyword="DEVS" text="開發團隊" /></div>
-                    <div className="text-xs text-[#8a7f72]">{(data.devsList || []).filter(d => (d.name || '').trim()).length} 位</div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs text-[#8a7f72]">{(data.devsList || []).filter(d => (d.name || '').trim()).length} 位</div>
+                      {orgTeam.length > 0 && (
+                        <button
+                          onClick={() => setShowDevPicker(prev => !prev)}
+                          className="text-xs font-bold text-[#5b755e] hover:text-[#3d4f3f] bg-[#e8eedd] hover:bg-[#dcedc1] px-2 py-0.5 rounded-full border border-[#a5c2a8] transition-all"
+                        >
+                          ⚡ 從成員庫選
+                        </button>
+                      )}
+                    </div>
                   </div>
+
+                  {/* 成員庫快選面板 */}
+                  {showDevPicker && orgTeam.length > 0 && (
+                    <div className="bg-[#f4f1ea] border-2 border-[#a5c2a8] rounded-xl p-3 flex flex-wrap gap-2">
+                      {orgTeam.map(m => {
+                        const alreadyAdded = (data.devsList || []).some(d => d.name === m.name);
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() => {
+                              if (alreadyAdded) return;
+                              const list = [...(data.devsList || []).filter(d => (d.name || '').trim()), { id: Date.now().toString(), name: m.name, role: m.role }];
+                              syncDevsString(list);
+                            }}
+                            disabled={alreadyAdded}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold border-2 transition-all
+                              ${alreadyAdded
+                                ? 'bg-[#8fb996] border-[#5b755e] text-white cursor-default'
+                                : 'bg-white border-[#a5c2a8] text-[#3e362e] hover:bg-[#dcedc1] hover:border-[#5b755e]'
+                              }`}
+                            title={alreadyAdded ? '已加入' : `加入 ${m.name}`}
+                          >
+                            <span className="w-5 h-5 rounded-full bg-[#8fb996] text-white text-xs flex items-center justify-center flex-shrink-0">{(m.name || '?').slice(0, 1)}</span>
+                            {m.name}{m.role ? <span className="font-normal opacity-70">・{m.role}</span> : null}
+                            {alreadyAdded && <span className="text-white text-xs">✓</span>}
+                          </button>
+                        );
+                      })}
+                      <button
+                        onClick={() => setShowDevPicker(false)}
+                        className="text-xs text-[#8a7f72] hover:text-[#3e362e] px-2 py-1 ml-auto"
+                      >
+                        收起
+                      </button>
+                    </div>
+                  )}
+
                   <div className="bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl shadow-inner divide-y-2 divide-[#e8e4d9]">
                     {(data.devsList || []).map((dev, i) => (
                       <div key={dev.id} className="flex items-center gap-2 px-3 py-2">

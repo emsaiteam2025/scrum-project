@@ -28,6 +28,11 @@ export default function Backlog() {
   const [isPhotoRestoring, setIsPhotoRestoring] = useState(false);
   const [poName, setPoName] = useState<string>('');
   const [mobileStatusFilter, setMobileStatusFilter] = useState<'all' | 'todo' | 'doing' | 'done'>('all');
+  // 日期字串只在 client 端產生，避免 server/client 對 toLocaleDateString 結果不一致造成 hydration 錯誤
+  const [dateLabel, setDateLabel] = useState<string>('');
+  useEffect(() => {
+    setDateLabel(new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }));
+  }, []);
   const photoRestoredAt = useRef<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const deletedPbiIds = useRef<Set<string>>(new Set());
@@ -690,8 +695,8 @@ export default function Backlog() {
         <div className="flex flex-col items-center">
           <Navigation />
           <SaveIndicator status={saveStatus} />
-          <div className="text-sm text-[#8a7f72] font-medium mt-1">
-            {new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
+          <div className="text-sm text-[#8a7f72] font-medium mt-1" suppressHydrationWarning>
+            {dateLabel}
           </div>
         </div>
 

@@ -14,6 +14,8 @@ interface Sprint {
   sprintStatus?: 'pending' | 'in-progress' | 'completed';
 }
 
+interface TeamMember { id: string; name: string; role: string }
+
 interface SprintDashboard {
   sprintGoal: string;
   totalTasks: number;
@@ -37,6 +39,40 @@ export default function SprintList() {
   const [shareRole, setShareRole] = useState<'editor'|'viewer'>('editor');
   const [dashboards, setDashboards] = useState<Record<string, SprintDashboard>>({});
   const [dashLoading, setDashLoading] = useState(false);
+
+  // 組織成員庫
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [showTeamSection, setShowTeamSection] = useState(false);
+  const [newMemberName, setNewMemberName] = useState('');
+
+  const syncTeamToLocalStorage = (members: TeamMember[]) => {
+    localStorage.setItem('orgTeamMembers', JSON.stringify(members));
+  };
+
+  const saveTeamMembers = async (members: TeamMember[]) => {
+    setTeamMembers(members);
+    syncTeamToLocalStorage(members);
+    if (user) {
+      const ref = doc(db, 'users', user.uid);
+      await setDoc(ref, { teamMembers: members }, { merge: true });
+    }
+  };
+
+  const addMember = async () => {
+    const name = newMemberName.trim();
+    if (!name) return;
+    const next = [...teamMembers, { id: Date.now().toString(), name, role: '' }];
+    await saveTeamMembers(next);
+    setNewMemberName('');
+  };
+
+  const removeMember = async (id: string) => {
+    await saveTeamMembers(teamMembers.filter(m => m.id !== id));
+  };
+
+  const updateMemberField = async (id: string, field: 'name' | 'role', value: string) => {
+    await saveTeamMembers(teamMembers.map(m => m.id === id ? { ...m, [field]: value } : m));
+  };
 
   useEffect(() => {
     // 如果載入超過 5 秒，顯示逾時提示
@@ -236,6 +272,25 @@ export default function SprintList() {
     fetchDashboard();
   }, [sprints, loading, user]);
 
+  // 載入成員庫
+  useEffect(() => {
+    const local = localStorage.getItem('orgTeamMembers');
+    if (local) {
+      try { setTeamMembers(JSON.parse(local)); } catch {}
+    }
+    if (!user) return;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists() && snap.data().teamMembers) {
+          const members: TeamMember[] = snap.data().teamMembers;
+          setTeamMembers(members);
+          syncTeamToLocalStorage(members);
+        }
+      } catch {}
+    })();
+  }, [user]);
+
   const createSprint = async () => {
     const newSprint: Sprint = {
       id: `sprint-${Date.now()}`,
@@ -362,10 +417,16 @@ export default function SprintList() {
     }
   };
 
-  const selectSprint = (id: string, name: string) => {
+  const selectSprint = async (id: string, name: string) => {
     localStorage.setItem('currentSprintId', id);
     localStorage.setItem('currentSprintName', name);
-    window.location.href = '/planning'; // 導向 Sprint Planning
+    // 寫入 Firestore，讓 scrum-project-new 同一帳號能讀到同一個 sprintId
+    if (user) {
+      try {
+        await setDoc(doc(db, 'users', user.uid), { currentSprintId: id }, { merge: true });
+      } catch {}
+    }
+    window.location.href = '/planning';
   };
 
   return (
@@ -415,6 +476,76 @@ export default function SprintList() {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* 🧑‍💼 組織成員庫 */}
+        <div className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-lg overflow-hidden">
+          <button
+            onClick={() => setShowTeamSection(prev => !prev)}
+            className="w-full bg-[#5b755e] p-4 flex items-center justify-between text-white font-bold text-lg hover:bg-[#4a614d] transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span>🧑‍💼</span>
+              <span>組織成員庫</span>
+              <span className="text-sm font-medium opacity-80 ml-1">— 在此設定成員，開 Sprint 時快速挑選</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm bg-white/20 px-2 py-0.5 rounded-full">{teamMembers.length} 位</span>
+              <span className="text-xl">{showTeamSection ? '▲' : '▼'}</span>
+            </div>
+          </button>
+
+          {showTeamSection && (
+            <div className="p-6 space-y-4">
+              {/* 成員列表 */}
+              {teamMembers.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {teamMembers.map(m => (
+                    <div key={m.id} className="bg-[#f4f1ea] border-2 border-[#d3cbbd] rounded-xl p-3 flex items-center gap-2 group">
+                      <div className="w-9 h-9 rounded-full bg-[#8fb996] flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                        {(m.name || '?').slice(0, 1)}
+                      </div>
+                      <input
+                        type="text"
+                        value={m.name}
+                        onChange={e => updateMemberField(m.id, 'name', e.target.value)}
+                        className="flex-1 min-w-0 bg-transparent font-bold text-[#3e362e] outline-none border-b border-transparent focus:border-[#8fb996] text-sm"
+                        placeholder="姓名"
+                      />
+                      <button
+                        onClick={() => removeMember(m.id)}
+                        className="text-[#c96262] opacity-0 group-hover:opacity-100 hover:bg-[#fceded] p-1 rounded transition-all"
+                        title="移除"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[#b5a695] text-sm text-center py-2">尚未新增任何成員。新增後可在 Sprint Planning 中快速挑選。</p>
+              )}
+
+              {/* 新增成員 */}
+              <div className="flex gap-2 items-center flex-wrap">
+                <input
+                  type="text"
+                  value={newMemberName}
+                  onChange={e => setNewMemberName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addMember()}
+                  placeholder="輸入成員姓名，按 Enter 新增"
+                  className="flex-1 min-w-[180px] px-3 py-2 border-2 border-[#b5a695] rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#8fb996]/50 text-sm"
+                />
+                <button
+                  onClick={addMember}
+                  disabled={!newMemberName.trim()}
+                  className="bg-[#8fb996] text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-[#78a07e] transition-all disabled:opacity-40 disabled:cursor-not-allowed border-2 border-[#5b755e] shadow-sm"
+                >
+                  ＋ 新增成員
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 主管儀表板 */}
@@ -516,12 +647,12 @@ export default function SprintList() {
                           {dashLoading ? (
                             <span className="text-[#d3cbbd]">載入中...</span>
                           ) : d?.startDate ? (
-                            <span className="font-bold text-[#6b5e50]">{new Date(d.startDate).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+                            <span className="font-bold text-[#6b5e50]" suppressHydrationWarning>{new Date(d.startDate).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
                           ) : <span className="text-[#d3cbbd]">開始日未設定</span>}
                           <span className="text-[#b5a695] font-bold">→</span>
                           {!dashLoading && (d?.endDate ? (
                             <span className={`font-bold ${isOverdue ? 'text-[#c96262]' : 'text-[#6b5e50]'}`}>
-                              {new Date(d.endDate).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                              <span suppressHydrationWarning>{new Date(d.endDate).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
                               {isOverdue && <span className="ml-1.5 text-[10px] bg-[#fceded] text-[#c96262] px-1.5 py-0.5 rounded-full border border-[#e6b1b1]">已逾期</span>}
                             </span>
                           ) : <span className="text-[#d3cbbd]">結束日未設定</span>)}
@@ -607,7 +738,7 @@ export default function SprintList() {
                   )}
                   
                   <div className="flex justify-between items-start mb-4">
-                    <div className="text-xs font-bold text-[#b5a695] bg-[#f4f1ea] px-2 py-1 rounded">
+                    <div className="text-xs font-bold text-[#b5a695] bg-[#f4f1ea] px-2 py-1 rounded" suppressHydrationWarning>
                       {new Date(sprint.createdAt).toLocaleDateString()} 建立
                     </div>
                     <div className="flex gap-2">
