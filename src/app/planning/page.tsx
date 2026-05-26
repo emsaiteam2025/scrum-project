@@ -14,14 +14,53 @@ export default function Home() {
     poIdea: '',
     timeLimit: '2',
     startDate: '',
-    stakeholders: '利益關係人、專家',
+    stakeholders: '',
     po: '',
     sm: '',
     devs: '',
+    devsList: [{ id: '1', name: '', role: '' }] as { id: string; name: string; role: string }[],
     whys: [{ id: '1', text: '' }],
     whats: [{ id: '1', text: '' }],
     hows: [{ id: '1', text: '' }]
   });
+
+  // 舊資料相容：若 devsList 還是空但 devs 字串有內容，從字串拆出列表
+  const devsHydratedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (loading || devsHydratedRef.current) return;
+    const list = data.devsList || [];
+    const hasContent = list.some(d => (d.name || '').trim() || (d.role || '').trim());
+    if (!hasContent && (data.devs || '').trim()) {
+      const names = data.devs.split(/[,、，\n]/).map(s => s.trim()).filter(Boolean);
+      if (names.length > 0) {
+        updateData({
+          devsList: names.map((name, i) => ({ id: `${Date.now()}-${i}`, name, role: '' }))
+        });
+      }
+    }
+    devsHydratedRef.current = true;
+  }, [loading, data.devs, data.devsList, updateData]);
+
+  const syncDevsString = (list: { id: string; name: string; role: string }[]) => {
+    const joined = list.map(d => d.name.trim()).filter(Boolean).join(',');
+    updateData({ devsList: list, devs: joined });
+  };
+
+  const updateDev = (index: number, field: 'name' | 'role', value: string) => {
+    const list = [...(data.devsList || [])];
+    list[index] = { ...list[index], [field]: value };
+    syncDevsString(list);
+  };
+
+  const addDev = () => {
+    const list = [...(data.devsList || []), { id: Date.now().toString(), name: '', role: '' }];
+    syncDevsString(list);
+  };
+
+  const removeDev = (index: number) => {
+    const list = (data.devsList || []).filter((_, i) => i !== index);
+    syncDevsString(list.length > 0 ? list : [{ id: Date.now().toString(), name: '', role: '' }]);
+  };
 
   // 元件載入時讀取 API Key 與 專案名稱
   React.useEffect(() => {
@@ -44,8 +83,7 @@ export default function Home() {
     localStorage.setItem('openai_api_key', value);
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiLoadingKey, setAiLoadingKey] = useState<string | null>(null);
 
   const handleAiRewrite = async (setter: React.Dispatch<React.SetStateAction<{ id: string; text: string }[]>>, items: { id: string; text: string }[], index: number, fieldType: 'WHY' | 'WHAT' | 'HOW') => {
     if (!apiKey) {
@@ -64,7 +102,8 @@ export default function Home() {
       stakeholders: data.stakeholders || ''
     };
 
-    setIsAiLoading(true);
+    const loadingKey = `${fieldType}-${items[index].id}`;
+    setAiLoadingKey(loadingKey);
     try {
       const response = await fetch('/api/ai-rewrite', {
         method: 'POST',
@@ -85,45 +124,76 @@ export default function Home() {
       console.error('AI Rewrite Error:', e);
       alert('潤飾失敗：' + (e.message || '未知錯誤'));
     } finally {
-      setIsAiLoading(false);
+      setAiLoadingKey(null);
     }
   };
 
   const renderDynamicList = (items: { id: string; text: string }[], setter: React.Dispatch<React.SetStateAction<{ id: string; text: string }[]>>, placeholder: string, fieldType: 'WHY' | 'WHAT' | 'HOW') => {
     return (
       <div className="flex-1 flex flex-col gap-4">
-        {items.map((item, index) => (
+        {items.map((item, index) => {
+          const itemLoadingKey = `${fieldType}-${item.id}`;
+          const isThisLoading = aiLoadingKey === itemLoadingKey;
+          const isAnyLoading = aiLoadingKey !== null;
+          return (
           <div key={item.id} className="flex gap-3 items-start group">
-            <textarea 
-              className="flex-1 px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e] transition-all" 
-              placeholder={placeholder} 
-              rows={2}
-              value={item.text}
-              onChange={(e) => {
-                const newItems = [...items];
-                newItems[index].text = e.target.value;
-                setter(newItems);
-              }}
-            />
+            <div className={`flex-1 relative transition-opacity ${isThisLoading ? 'opacity-70' : ''}`}>
+              <textarea
+                className="w-full px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e] transition-all disabled:cursor-wait"
+                placeholder={placeholder}
+                rows={2}
+                value={item.text}
+                disabled={isThisLoading}
+                onChange={(e) => {
+                  const newItems = [...items];
+                  newItems[index].text = e.target.value;
+                  setter(newItems);
+                }}
+              />
+              {isThisLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-white/40 backdrop-blur-[1px] rounded-xl pointer-events-none">
+                  <div className="flex items-center gap-2 bg-[#fffdf9] border-2 border-[#d1a3b4] text-[#9b596f] font-bold px-3 py-1.5 rounded-full shadow-sm text-sm">
+                    <span className="inline-block w-3 h-3 border-2 border-[#d1a3b4] border-t-transparent rounded-full animate-spin"></span>
+                    <span>✨ 潤飾中...</span>
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="flex flex-col gap-2 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
-              <button 
+              <button
                 onClick={() => handleAiRewrite(setter, items, index, fieldType)}
-                className="bg-[#f4e4e9] text-[#9b596f] px-3 py-2 rounded-lg text-xs font-bold hover:bg-[#eac4d0] border-2 border-[#d1a3b4] transition-all flex items-center justify-center shadow-sm"
-                title="使用魔法讓描述更精準"
+                disabled={isAnyLoading}
+                aria-busy={isThisLoading}
+                className={`px-3 py-2 rounded-lg text-xs font-bold border-2 transition-all flex items-center justify-center gap-1 shadow-sm min-w-[88px]
+                  ${isThisLoading
+                    ? 'bg-[#eac4d0] text-[#9b596f] border-[#d1a3b4] cursor-wait'
+                    : 'bg-[#f4e4e9] text-[#9b596f] hover:bg-[#eac4d0] border-[#d1a3b4]'}
+                  ${isAnyLoading && !isThisLoading ? 'opacity-50 cursor-not-allowed' : ''}
+                `}
+                title={isThisLoading ? '正在請 AI 潤飾，請稍候' : '使用魔法讓描述更精準'}
               >
-                ✨ 魔法潤飾
+                {isThisLoading ? (
+                  <>
+                    <span className="inline-block w-3 h-3 border-2 border-[#9b596f] border-t-transparent rounded-full animate-spin"></span>
+                    <span>潤飾中</span>
+                  </>
+                ) : (
+                  <>✨ 魔法潤飾</>
+                )}
               </button>
               {items.length > 1 && (
-                <button 
+                <button
                   onClick={() => setter(items.filter((_: { id: string; text: string }, i: number) => i !== index))}
-                  className="bg-[#fceded] text-[#c96262] hover:bg-[#f7d7d7] px-3 py-2 rounded-lg border-2 border-[#e6b1b1] text-xs font-bold transition-all flex items-center justify-center shadow-sm"
+                  disabled={isThisLoading}
+                  className="bg-[#fceded] text-[#c96262] hover:bg-[#f7d7d7] px-3 py-2 rounded-lg border-2 border-[#e6b1b1] text-xs font-bold transition-all flex items-center justify-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   🧹 掃除
                 </button>
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
         <div>
           <button 
             onClick={() => setter([...items, { id: Date.now().toString(), text: '' }])}
@@ -220,31 +290,73 @@ export default function Home() {
               </div>
 
               {/* 右側：與會人 */}
-              <div className="flex-1 flex flex-col gap-2">
+              <div className="flex-1 flex flex-col gap-4">
                 <label className="font-bold text-[#6b5e50]">與會人</label>
-                <div className="px-4 py-3 bg-[#e8e4d9] border-2 border-[#b5a695] rounded-xl text-[#3e362e] shadow-inner font-medium flex-1">
-                  <div className="flex flex-col gap-4 justify-around h-full">
-                    <div className="flex items-center gap-2">
-                      <div className="w-32 flex-shrink-0"><ScrumTooltip keyword="PO" text="Product Owner" /></div>
-                      <span>:</span>
-                      <input type="text" value={data.po || ''} onChange={e => updateData({ po: e.target.value })} className="flex-1 min-w-0 bg-transparent border-b-2 border-[#b5a695] focus:border-[#8fb996] outline-none placeholder-[#8a7f72]" placeholder="PO姓名" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-32 flex-shrink-0"><ScrumTooltip keyword="SM" text="Scrum Master" /></div>
-                      <span>:</span>
-                      <input type="text" value={data.sm || ''} onChange={e => updateData({ sm: e.target.value })} className="flex-1 min-w-0 bg-transparent border-b-2 border-[#b5a695] focus:border-[#8fb996] outline-none placeholder-[#8a7f72]" placeholder="SM姓名" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-32 flex-shrink-0"><ScrumTooltip keyword="DEVS" text="開發團隊" /></div>
-                      <span>:</span>
-                      <input type="text" value={data.devs || ''} onChange={e => updateData({ devs: e.target.value })} className="flex-1 min-w-0 bg-transparent border-b-2 border-[#b5a695] focus:border-[#8fb996] outline-none placeholder-[#8a7f72]" placeholder="DEVS名單" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-32 flex-shrink-0 pl-1">其他</div>
-                      <span>:</span>
-                      <input type="text" value={data.stakeholders} onChange={e => updateData({ stakeholders: e.target.value })} className="flex-1 min-w-0 bg-transparent border-b-2 border-[#b5a695] focus:border-[#8fb996] outline-none placeholder-[#8a7f72]" placeholder="利益關係人、專家" />
-                    </div>
+
+                {/* PO / SM */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-2">
+                    <div className="text-sm font-bold text-[#6b5e50]"><ScrumTooltip keyword="PO" text="Product Owner" /> <span className="text-[#c96262]">*</span></div>
+                    <input type="text" value={data.po || ''} onChange={e => updateData({ po: e.target.value })} className="px-3 py-2 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner text-[#3e362e]" placeholder="PO 姓名" />
                   </div>
+                  <div className="flex flex-col gap-2">
+                    <div className="text-sm font-bold text-[#6b5e50]"><ScrumTooltip keyword="SM" text="Scrum Master" /> <span className="text-[#c96262]">*</span></div>
+                    <input type="text" value={data.sm || ''} onChange={e => updateData({ sm: e.target.value })} className="px-3 py-2 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner text-[#3e362e]" placeholder="SM 姓名" />
+                  </div>
+                </div>
+
+                {/* 開發團隊 */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-bold text-[#6b5e50]"><ScrumTooltip keyword="DEVS" text="開發團隊" /></div>
+                    <div className="text-xs text-[#8a7f72]">{(data.devsList || []).filter(d => (d.name || '').trim()).length} 位</div>
+                  </div>
+                  <div className="bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl shadow-inner divide-y-2 divide-[#e8e4d9]">
+                    {(data.devsList || []).map((dev, i) => (
+                      <div key={dev.id} className="flex items-center gap-2 px-3 py-2">
+                        <input
+                          type="text"
+                          value={dev.name}
+                          onChange={e => updateDev(i, 'name', e.target.value)}
+                          className="flex-1 min-w-0 bg-transparent border-b-2 border-transparent focus:border-[#8fb996] outline-none text-[#3e362e] placeholder-[#a89e92]"
+                          placeholder="姓名"
+                        />
+                        <input
+                          type="text"
+                          value={dev.role}
+                          onChange={e => updateDev(i, 'role', e.target.value)}
+                          className="w-32 bg-transparent border-b-2 border-transparent focus:border-[#8fb996] outline-none text-sm text-[#6b5e50] placeholder-[#a89e92]"
+                          placeholder="角色（例：Tech Lead）"
+                        />
+                        <button
+                          onClick={() => removeDev(i)}
+                          className="text-[#c96262] hover:bg-[#fceded] px-2 py-1 rounded text-sm shrink-0"
+                          title="移除這位成員"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={addDev}
+                    className="self-start text-sm font-bold text-[#5b755e] hover:text-[#3d4f3f] flex items-center gap-1 px-3 py-1.5 bg-[#e8eedd] hover:bg-[#dcedc1] rounded-full border-2 border-[#a5c2a8] transition-all shadow-sm"
+                  >
+                    ＋ 新增成員
+                  </button>
+                </div>
+
+                {/* 利害關係人 / 專家 */}
+                <div className="flex flex-col gap-2">
+                  <div className="text-sm font-bold text-[#6b5e50]">利害關係人 / 專家（選填）</div>
+                  <textarea
+                    value={data.stakeholders}
+                    onChange={e => updateData({ stakeholders: e.target.value })}
+                    rows={3}
+                    className="px-3 py-2 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner text-[#3e362e] resize-none"
+                    placeholder="一行一位，例如：&#10;陳副總（主要贊助人）&#10;Globex IT 部門（客戶代表）"
+                  />
+                  <div className="text-xs text-[#8a7f72]">一行一位，可加註角色，例如「王經理（客戶代表）」</div>
                 </div>
               </div>
             </div>

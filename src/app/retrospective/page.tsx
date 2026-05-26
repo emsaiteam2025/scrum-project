@@ -57,7 +57,7 @@ export default function SprintRetrospective() {
         </section>
 
         {/* 倒數計時器 */}
-        <CountdownTimer />
+        <CountdownTimer defaultMinutes={2} presets={[45, 90, 135, 180]} />
 
         {/* 上一次的行動 */}
         <section className="bg-[#fffdf9] border-4 border-[#b08968] rounded-3xl shadow-lg overflow-hidden">

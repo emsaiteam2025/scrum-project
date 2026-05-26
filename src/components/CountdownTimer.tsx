@@ -2,7 +2,13 @@
 
 import React, { useEffect, useState } from 'react';
 
-export default function CountdownTimer({ defaultMinutes = 15 }: { defaultMinutes?: number }) {
+export default function CountdownTimer({
+  defaultMinutes = 15,
+  presets = [5, 10, 15, 30],
+}: {
+  defaultMinutes?: number;
+  presets?: number[];
+}) {
   const [minutes, setMinutes] = useState<number>(defaultMinutes);
   const [remaining, setRemaining] = useState<number>(defaultMinutes * 60);
   const [isRunning, setIsRunning] = useState<boolean>(false);
@@ -86,7 +92,7 @@ export default function CountdownTimer({ defaultMinutes = 15 }: { defaultMinutes
         </label>
 
         <div className="flex gap-1">
-          {[5, 10, 15, 30].map(m => (
+          {presets.map(m => (
             <button
               key={m}
               onClick={() => applyMinutes(m)}

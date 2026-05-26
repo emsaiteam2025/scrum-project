@@ -34,13 +34,27 @@ export default function DailyScrum() {
   useEffect(() => {
     const sprintId = localStorage.getItem('currentSprintId');
     if (!sprintId) return;
+    const timeLimitToDays = (tl: unknown): number | null => {
+      if (tl === '30d') return 30;
+      const n = Number(tl);
+      if (!Number.isFinite(n) || n <= 0) return null;
+      return n * 7;
+    };
     const load = async () => {
       try {
         const { doc, getDoc } = await import('firebase/firestore');
         const { db } = await import('@/lib/firebase');
         const snap = await getDoc(doc(db, 'sprints', sprintId));
-        if (snap.exists() && snap.data().planning?.startDate) {
-          setSprintStartDate(snap.data().planning.startDate);
+        if (snap.exists()) {
+          const planning = snap.data().planning;
+          if (planning?.startDate) {
+            setSprintStartDate(planning.startDate);
+          }
+          const days = timeLimitToDays(planning?.timeLimit);
+          if (days) {
+            setSprintDays(days);
+            localStorage.setItem('sprintDays', String(days));
+          }
         }
       } catch {}
     };
