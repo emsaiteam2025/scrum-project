@@ -120,6 +120,7 @@ export default function WorkloadPage() {
   const [sprintWorkloads, setSprintWorkloads] = useState<SprintWorkload[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [expandedPersons, setExpandedPersons] = useState<Set<string>>(new Set());
+  const [showCompleted, setShowCompleted] = useState(false);
 
   // Load sprint list
   useEffect(() => {
@@ -139,7 +140,9 @@ export default function WorkloadPage() {
       }
       list.sort((a, b) => b.createdAt - a.createdAt);
       setSprints(list);
-      setSelectedIds(new Set(list.map(s => s.id)));
+      // 預設只選取非已完成的 Sprint
+      const activeIds = list.filter(s => s.sprintStatus !== 'completed').map(s => s.id);
+      setSelectedIds(new Set(activeIds));
     };
     load();
   }, [user, authLoading]);
@@ -310,30 +313,72 @@ export default function WorkloadPage() {
         </div>
 
         {/* Sprint Filter */}
-        <div className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-2xl p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-bold text-[#5b755e] shrink-0">選擇 Sprint：</span>
-            <button
-              onClick={() => setSelectedIds(selectedIds.size === sprints.length ? new Set() : new Set(sprints.map(s => s.id)))}
-              className={`text-xs px-3 py-1.5 rounded-full font-bold border-2 transition-all shrink-0 ${selectedIds.size === sprints.length ? 'bg-[#5b755e] text-white border-[#5b755e]' : 'bg-white text-[#5b755e] border-[#8fb996] hover:bg-[#e8eedd]'}`}
-            >
-              全選
-            </button>
-            {sprints.map(s => (
-              <button
-                key={s.id}
-                onClick={() => toggleSprint(s.id)}
-                title={s.name}
-                className={`text-xs px-3 py-1.5 rounded-full font-bold border-2 transition-all max-w-[180px] truncate ${selectedIds.has(s.id) ? 'bg-[#e07a5f] text-white border-[#e07a5f]' : 'bg-white text-[#8a7f72] border-[#d3cbbd] hover:border-[#b5a695]'}`}
-              >
-                {s.name}
-              </button>
-            ))}
-            {sprints.length === 0 && !authLoading && (
-              <span className="text-xs text-[#b5a695] italic">尚無 Sprint 資料</span>
-            )}
-          </div>
-        </div>
+        {(() => {
+          const activeSprints = sprints.filter(s => s.sprintStatus !== 'completed');
+          const completedSprints = sprints.filter(s => s.sprintStatus === 'completed');
+          const visibleSprints = showCompleted ? sprints : activeSprints;
+          const allVisibleSelected = visibleSprints.length > 0 && visibleSprints.every(s => selectedIds.has(s.id));
+          return (
+            <div className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-2xl p-4 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-bold text-[#5b755e] shrink-0">選擇 Sprint：</span>
+                <button
+                  onClick={() => {
+                    if (allVisibleSelected) {
+                      setSelectedIds(prev => {
+                        const next = new Set(prev);
+                        visibleSprints.forEach(s => next.delete(s.id));
+                        return next;
+                      });
+                    } else {
+                      setSelectedIds(prev => {
+                        const next = new Set(prev);
+                        visibleSprints.forEach(s => next.add(s.id));
+                        return next;
+                      });
+                    }
+                  }}
+                  className={`text-xs px-3 py-1.5 rounded-full font-bold border-2 transition-all shrink-0 ${allVisibleSelected ? 'bg-[#5b755e] text-white border-[#5b755e]' : 'bg-white text-[#5b755e] border-[#8fb996] hover:bg-[#e8eedd]'}`}
+                >
+                  全選
+                </button>
+                {visibleSprints.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => toggleSprint(s.id)}
+                    title={s.name}
+                    className={`text-xs px-3 py-1.5 rounded-full font-bold border-2 transition-all max-w-[180px] truncate ${selectedIds.has(s.id) ? 'bg-[#e07a5f] text-white border-[#e07a5f]' : 'bg-white text-[#8a7f72] border-[#d3cbbd] hover:border-[#b5a695]'}`}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+                {visibleSprints.length === 0 && !authLoading && (
+                  <span className="text-xs text-[#b5a695] italic">目前無進行中或待開始的 Sprint</span>
+                )}
+              </div>
+              {completedSprints.length > 0 && (
+                <div className="flex items-center gap-2 pt-1 border-t border-[#f4f1ea]">
+                  <button
+                    onClick={() => setShowCompleted(v => !v)}
+                    className={`text-xs px-3 py-1 rounded-full font-bold border-2 transition-all ${showCompleted ? 'bg-[#8a7f72] text-white border-[#8a7f72]' : 'bg-white text-[#8a7f72] border-[#d3cbbd] hover:border-[#b5a695]'}`}
+                  >
+                    {showCompleted ? '隱藏已完成' : `顯示已完成（${completedSprints.length}）`}
+                  </button>
+                  {showCompleted && completedSprints.map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => toggleSprint(s.id)}
+                      title={s.name}
+                      className={`text-xs px-3 py-1.5 rounded-full font-bold border-2 transition-all max-w-[180px] truncate opacity-70 ${selectedIds.has(s.id) ? 'bg-[#8a7f72] text-white border-[#8a7f72]' : 'bg-white text-[#8a7f72] border-[#d3cbbd] hover:border-[#b5a695]'}`}
+                    >
+                      ✅ {s.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Summary Cards */}
         {!loadingData && personLoads.length > 0 && (
@@ -404,10 +449,9 @@ export default function WorkloadPage() {
                       {p.name.charAt(0)}
                     </div>
 
-                    {/* Name + role */}
+                    {/* Name */}
                     <div className="w-28 shrink-0 min-w-0">
                       <div className="font-bold text-[#3e362e] truncate">{p.name}</div>
-                      <div className="text-xs text-[#8a7f72] truncate">{p.role || '—'}</div>
                     </div>
 
                     {/* Progress bar + formula */}
