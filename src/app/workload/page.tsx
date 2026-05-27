@@ -41,6 +41,7 @@ interface SprintWorkload {
   sprintId: string;
   sprintName: string;
   sprintDays: number;
+  workingDays: number;
   startDate: string;
   devsList: Dev[];
   tasks: Task[];
@@ -58,6 +59,7 @@ interface SprintBreakdown {
   sprintId: string;
   sprintName: string;
   sprintDays: number;
+  workingDays: number;
   capacity: number;
   assigned: number;
   done: number;
@@ -77,6 +79,20 @@ interface PersonLoad {
   loadPct: number;
   tasks: PersonTask[];
   sprintBreakdown: SprintBreakdown[];
+}
+
+function calcWorkingDays(startDate: string, totalDays: number): number {
+  if (!startDate || totalDays <= 0) return totalDays;
+  const start = new Date(startDate);
+  if (isNaN(start.getTime())) return totalDays;
+  let count = 0;
+  for (let i = 0; i < totalDays; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) count++;
+  }
+  return count || 1;
 }
 
 function parseHours(timeStr: string | undefined): number {
@@ -145,11 +161,14 @@ export default function WorkloadPage() {
             const backlog = d.backlog || {};
             const allTasks: Task[] = backlog.tasks || [];
             const taskItems = allTasks.filter((t: Task) => t.type === 'task');
+            const sprintDays = Number(backlog.sprintDays) || 14;
+            const startDate = planning.startDate || '';
             results.push({
               sprintId,
               sprintName: sprint.name,
-              sprintDays: Number(backlog.sprintDays) || 14,
-              startDate: planning.startDate || '',
+              sprintDays,
+              workingDays: calcWorkingDays(startDate, sprintDays),
+              startDate,
               devsList: (planning.devsList || []).filter((dev: Dev) => dev.name?.trim()),
               tasks: taskItems,
               progress: {
@@ -184,7 +203,7 @@ export default function WorkloadPage() {
           map.set(key, { name: key, role: dev.role || '', capacity: 0, assigned: 0, done: 0, remaining: 0, loadPct: 0, tasks: [], sprintBreakdown: [] });
         }
         const p = map.get(key)!;
-        const cap = sw.sprintDays * 8;
+        const cap = sw.workingDays * 8;
         p.capacity += cap;
         if (!p.role && dev.role) p.role = dev.role;
 
@@ -197,6 +216,7 @@ export default function WorkloadPage() {
           sprintId: sw.sprintId,
           sprintName: sw.sprintName,
           sprintDays: sw.sprintDays,
+          workingDays: sw.workingDays,
           capacity: cap,
           assigned: sprintAssigned,
           done: sprintDone,
@@ -457,7 +477,10 @@ export default function WorkloadPage() {
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="text-xs font-bold text-[#3e362e] truncate max-w-[160px]">{sb.sprintName}</span>
                                     <span className="text-[10px] text-[#8a7f72] bg-white px-1.5 py-0.5 rounded border border-[#e8d5b5] shrink-0">
-                                      {sb.sprintDays}天 × 8h ＝ {sb.capacity}h
+                                      {sb.workingDays}工作天 × 8h ＝ {sb.capacity}h
+                                      {sb.workingDays < sb.sprintDays && (
+                                        <span className="text-[#b5a695] ml-1">(共{sb.sprintDays}天)</span>
+                                      )}
                                     </span>
                                   </div>
                                   {/* Mini bar */}
@@ -540,14 +563,14 @@ export default function WorkloadPage() {
                           {/* 天數進度 */}
                           {sw.startDate ? (
                             notStarted ? (
-                              <div className="text-[10px] text-[#b5a695] font-normal mb-1">共 {sw.sprintDays} 天｜尚未開始</div>
+                              <div className="text-[10px] text-[#b5a695] font-normal mb-1">共 {sw.sprintDays} 天 / {sw.workingDays} 工作天｜尚未開始</div>
                             ) : (
                               <div className="text-[10px] text-[#6b5e50] font-bold mb-1">
-                                第 {elapsedDays} 天 / 共 {sw.sprintDays} 天
+                                第 {elapsedDays} 天 / {sw.sprintDays} 天 · {sw.workingDays} 工作天
                               </div>
                             )
                           ) : (
-                            <div className="text-[10px] text-[#b5a695] font-normal mb-1">共 {sw.sprintDays} 天</div>
+                            <div className="text-[10px] text-[#b5a695] font-normal mb-1">共 {sw.sprintDays} 天 / {sw.workingDays} 工作天</div>
                           )}
                           {/* 時間進度條 */}
                           <div className="w-full h-1.5 rounded-full bg-[#e8e4d9] overflow-hidden border border-[#d3cbbd] mb-1">
@@ -585,7 +608,7 @@ export default function WorkloadPage() {
                             <td key={sw.sprintId} className="p-3 text-center text-[#d3cbbd] border-b border-[#f4f1ea]">—</td>
                           );
                         }
-                        const cap = sw.sprintDays * 8;
+                        const cap = sw.workingDays * 8;
                         const assigned = sw.tasks
                           .filter(t => t.role?.split(',').map(r => r.trim()).includes(p.name))
                           .reduce((s, t) => s + parseHours(t.time), 0);
@@ -611,7 +634,7 @@ export default function WorkloadPage() {
         {/* Tips */}
         <div className="bg-[#fffdf9] border-2 border-[#e8d5b5] rounded-2xl p-4 text-xs text-[#8a7f72] space-y-1">
           <p className="font-bold text-[#6b5e50]">使用說明</p>
-          <p>• <strong>容量</strong> = Sprint 天數 × 8 小時（每日工時）</p>
+          <p>• <strong>容量</strong> = 工作天數（扣除週六、週日）× 8 小時；若未設定開始日期則以總天數計算</p>
           <p>• <strong>負荷率</strong> = 任務預估工時總和 ÷ 容量 × 100%</p>
           <p>• 任務負責人欄位支援多人（逗號分隔），工時平均分配給每位負責人計算</p>
           <p>• Backlog 任務需填寫「工時」欄位（如 4h / 2d / 30m），才能準確計算負荷</p>
