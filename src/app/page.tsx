@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
 import { db } from '@/lib/firebase';
 import { collection, doc, getDocs, getDoc, setDoc, deleteDoc, query, where } from 'firebase/firestore';
@@ -561,7 +562,12 @@ export default function SprintList() {
             <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden">
               <div className="bg-[#5b755e] border-b-4 border-[#3d4f3f] p-4 text-xl font-bold text-white flex items-center justify-between">
                 <div className="flex items-center gap-2"><span>📊</span> 主管儀表板</div>
-                {dashLoading && <div className="text-sm font-normal opacity-70 animate-pulse">載入進度中...</div>}
+                <div className="flex items-center gap-3">
+                  {dashLoading && <div className="text-sm font-normal opacity-70 animate-pulse">載入進度中...</div>}
+                  <Link href="/workload" className="text-sm font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5">
+                    <span>⚖️</span> 人員負荷分析
+                  </Link>
+                </div>
               </div>
 
               <div className="p-4 md:p-6 space-y-6">
