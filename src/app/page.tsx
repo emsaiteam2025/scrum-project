@@ -557,7 +557,22 @@ export default function SprintList() {
           const totalDoing = vals.reduce((s, d) => s + d.doing, 0);
           const totalTodo = vals.reduce((s, d) => s + d.todo, 0);
           const overallRate = totalTasks > 0 ? Math.round(totalDone / totalTasks * 100) : 0;
-          const activeCount = vals.filter(d => d.doing > 0 || d.todo > 0).length;
+          const inProgressCount = sprints.filter(s => {
+            const d = dashboards[s.id];
+            const total = d?.totalTasks ?? 0;
+            const dg = d?.doing ?? 0;
+            const td = d?.todo ?? 0;
+            const auto = (total === 0 || dashLoading) ? 'pending' : (td === 0 && dg === 0) ? 'completed' : dg > 0 ? 'in-progress' : 'pending';
+            return (s.sprintStatus ?? auto) === 'in-progress';
+          }).length;
+          const pendingCount = sprints.filter(s => {
+            const d = dashboards[s.id];
+            const total = d?.totalTasks ?? 0;
+            const dg = d?.doing ?? 0;
+            const td = d?.todo ?? 0;
+            const auto = (total === 0 || dashLoading) ? 'pending' : (td === 0 && dg === 0) ? 'completed' : dg > 0 ? 'in-progress' : 'pending';
+            return (s.sprintStatus ?? auto) === 'pending';
+          }).length;
           return (
             <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden">
               <div className="bg-[#5b755e] border-b-4 border-[#3d4f3f] p-4 text-xl font-bold text-white flex items-center justify-between">
@@ -572,18 +587,22 @@ export default function SprintList() {
 
               <div className="p-4 md:p-6 space-y-6">
                 {/* 整體統計卡片 */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   <div className="bg-[#e8eedd] border-2 border-[#a5c2a8] rounded-2xl p-4 text-center">
                     <div className="text-3xl font-bold text-[#4a7c59]">{sprints.length}</div>
                     <div className="text-xs font-bold text-[#5b755e] mt-1">📁 Sprint 總數</div>
                   </div>
                   <div className="bg-[#faebce] border-2 border-[#e6c98a] rounded-2xl p-4 text-center">
-                    <div className="text-3xl font-bold text-[#d4a373]">{dashLoading ? '—' : activeCount}</div>
+                    <div className="text-3xl font-bold text-[#d4a373]">{dashLoading ? '—' : inProgressCount}</div>
                     <div className="text-xs font-bold text-[#d4a373] mt-1">⚡ 進行中的 Sprint</div>
+                  </div>
+                  <div className="bg-[#fceded] border-2 border-[#e6b1b1] rounded-2xl p-4 text-center">
+                    <div className="text-3xl font-bold text-[#c96262]">{dashLoading ? '—' : pendingCount}</div>
+                    <div className="text-xs font-bold text-[#c96262] mt-1">📋 待開始的 Sprint</div>
                   </div>
                   <div className="bg-[#f2e3c6] border-2 border-[#d4a373] rounded-2xl p-4 text-center">
                     <div className="text-3xl font-bold text-[#8b5a2b]">{dashLoading ? '—' : totalTasks}</div>
-                    <div className="text-xs font-bold text-[#8b5a2b] mt-1">📋 任務總數</div>
+                    <div className="text-xs font-bold text-[#8b5a2b] mt-1">🗂 任務總數</div>
                   </div>
                   <div className="bg-[#c2dce3] border-2 border-[#76a5af] rounded-2xl p-4 text-center">
                     <div className="text-3xl font-bold text-[#467386]">{dashLoading ? '—' : `${overallRate}%`}</div>
