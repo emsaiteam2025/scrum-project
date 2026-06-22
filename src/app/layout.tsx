@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { Suspense } from "react";
 import { AuthProvider } from "@/components/AuthProvider";
+import { TimerProvider } from "@/contexts/TimerContext";
+import FloatingTimer from "@/components/FloatingTimer";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -30,7 +33,12 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <AuthProvider>
-          {children}
+          <TimerProvider>
+            <Suspense>
+              {children}
+              <FloatingTimer />
+            </Suspense>
+          </TimerProvider>
         </AuthProvider>
       </body>
     </html>

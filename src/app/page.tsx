@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
 import { db } from '@/lib/firebase';
@@ -16,6 +16,7 @@ interface Sprint {
 }
 
 interface TeamMember { id: string; name: string; role: string }
+interface Holiday { id: string; date: string; name: string }
 
 interface SprintDashboard {
   sprintGoal: string;
@@ -27,6 +28,99 @@ interface SprintDashboard {
   pbiAccepted: number;
   startDate: string;
   endDate: string;
+}
+
+// ── 工作日誌型別（module 層，方便 pure function 使用）──
+interface JEntry { name: string; role: string; q1: string; q2: string; q3: string }
+interface JDay { idx: number; date: string; isoDate: string; dow: string; done: boolean; entries: JEntry[] }
+interface JPersonLoad { name: string; role: string; assigned: number; capacity: number; loadPct: number }
+interface JSprintData { name: string; goal: string; totalDays: number; completionPct: number; workloads: JPersonLoad[]; days: JDay[] }
+interface JournalRawData { allData: JSprintData[]; loadLines: string[]; headerMeta: string }
+
+const WEEKDAYS_J_MOD = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+
+function buildDailyText(raw: JournalRawData, isoDate: string): string {
+  const d = new Date(isoDate);
+  const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
+  const displayDate = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+  const dl: string[] = [`工作日報 — ${displayDate}\n${raw.headerMeta}`];
+  if (raw.loadLines.length > 0) { dl.push('【人員總負荷】'); dl.push(...raw.loadLines); dl.push(''); }
+  for (const s of raw.allData) {
+    dl.push(`▌ ${s.name}　任務完成率：${s.completionPct}%`);
+    if (s.goal) dl.push(`  Sprint Goal：${s.goal}`);
+    dl.push('─'.repeat(40));
+    const todayDays = s.days.filter(day => day.isoDate === isoDate || (!day.isoDate && day.date === dateStr));
+    if (todayDays.length === 0) { dl.push(`  （${dateStr} 尚無 Daily Scrum 紀錄）\n`); continue; }
+    for (const day of todayDays) {
+      dl.push(`  Day ${day.idx + 1}/${s.totalDays} (${day.date} ${day.dow}) ${day.done ? '✅' : '○'}`);
+      day.entries.forEach(e => {
+        if (!e.q1 && !e.q2 && !e.q3) return;
+        dl.push(`  【${e.name}】${e.role ? `（${e.role}）` : ''}`);
+        if (e.q1) dl.push(`    昨天完成：${e.q1}`);
+        if (e.q2) dl.push(`    今天計劃：${e.q2}`);
+        if (e.q3) dl.push(`    阻礙事項：${e.q3}`);
+      });
+      dl.push('');
+    }
+    dl.push('');
+  }
+  return dl.join('\n');
+}
+
+function buildWeeklyText(raw: JournalRawData, rangeFrom: string, rangeTo: string): string {
+  const fmtDate = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+  };
+  const rangeStr = rangeFrom || rangeTo
+    ? `區間：${rangeFrom ? fmtDate(rangeFrom) : '（起始）'} — ${rangeTo ? fmtDate(rangeTo) : '（迄今）'}`
+    : '區間：全部';
+  const wl: string[] = [`工作週報\n${rangeStr}\n${raw.headerMeta}`];
+  if (raw.loadLines.length > 0) { wl.push('【人員總負荷】'); wl.push(...raw.loadLines); wl.push(''); }
+  for (const s of raw.allData) {
+    wl.push(`▌ ${s.name}　任務完成率：${s.completionPct}%`);
+    if (s.goal) wl.push(`  Sprint Goal：${s.goal}`);
+    wl.push('─'.repeat(40));
+    const filtered = s.days.filter(day => {
+      if (!rangeFrom && !rangeTo) return true;
+      if (!day.isoDate) return true;
+      if (rangeFrom && day.isoDate < rangeFrom) return false;
+      if (rangeTo && day.isoDate > rangeTo) return false;
+      return true;
+    });
+    if (filtered.length === 0) { wl.push('  （所選區間無紀錄）\n'); continue; }
+    const maxIdx = Math.max(...filtered.map(d => d.idx));
+    const numWeeks = Math.ceil((maxIdx + 1) / 7);
+    for (let w = 0; w < numWeeks; w++) {
+      const weekDays = filtered.filter(d => d.idx >= w * 7 && d.idx < (w + 1) * 7);
+      if (weekDays.length === 0) continue;
+      const wStart = weekDays[0]; const wEnd = weekDays[weekDays.length - 1];
+      const wRange = wStart.date
+        ? `${wStart.date} ${wStart.dow} - ${wEnd.date} ${wEnd.dow}`
+        : `Day ${w*7+1}/${s.totalDays} - Day ${Math.min((w+1)*7, maxIdx+1)}/${s.totalDays}`;
+      wl.push(`\n  第 ${w + 1} 週 (${wRange})`);
+      const personNames = Array.from(new Set(weekDays.flatMap(d => d.entries.map(e => e.name))));
+      for (const name of personNames) {
+        const pDays = weekDays
+          .map(d => ({ ...d, e: d.entries.find(e => e.name === name) || { name, role: '', q1: '', q2: '', q3: '' } }))
+          .filter(d => d.e.q1 || d.e.q2 || d.e.q3);
+        if (pDays.length === 0) continue;
+        const personRole = pDays[0]?.e?.role || '';
+        wl.push(`  【${name}】${personRole ? `（${personRole}）` : ''}`);
+        const accs = pDays.filter(d => d.e.q1).map(d =>
+          `      ${d.date ? `${d.date} (${d.dow})` : `Day ${d.idx+1}/${s.totalDays}`}：${d.e.q1}`);
+        if (accs.length > 0) { wl.push('    📝 本週完成：'); wl.push(...accs); }
+        const lastQ2 = [...pDays].reverse().find(d => d.e.q2);
+        if (lastQ2) wl.push(`    🎯 下週計劃：${lastQ2.e.q2}`);
+        const imps = pDays.filter(d => d.e.q3 && d.e.q3 !== '無').map(d =>
+          `      ${d.date ? `${d.date} (${d.dow})` : `Day ${d.idx+1}/${s.totalDays}`}：${d.e.q3}`);
+        if (imps.length > 0) { wl.push('    ⚠️ 本週阻礙：'); wl.push(...imps); }
+        else wl.push('    ⚠️ 本週阻礙：無');
+      }
+    }
+    wl.push('');
+  }
+  return wl.join('\n');
 }
 
 export default function SprintList() {
@@ -45,6 +139,34 @@ export default function SprintList() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [showTeamSection, setShowTeamSection] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
+  // 國定假日庫
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+
+  const [newHolidayDate, setNewHolidayDate] = useState('');
+  const [newHolidayName, setNewHolidayName] = useState('');
+  // 組織設定分頁：'members' | 'holidays' | 'line'
+  const [orgSettingsTab, setOrgSettingsTab] = useState<'members' | 'holidays' | 'line'>('members');
+  // LINE 推播
+  const [lineUsers, setLineUsers] = useState<{ lineUserId: string; displayName: string; blocked?: boolean }[]>([]);
+  const [lineRecipients, setLineRecipients] = useState<string[]>([]); // 已選取的 lineUserId
+  const [lineSchedule, setLineSchedule] = useState({ dailyEnabled: false, dailyHour: 18, weeklyEnabled: false, weeklyDay: 5, weeklyHour: 17 });
+  const [lineSending, setLineSending] = useState(false);
+  const [lineSent, setLineSent] = useState(false);
+  const [lineUsersLoading, setLineUsersLoading] = useState(false);
+  const [lineTestSending, setLineTestSending] = useState(false);
+  const [lineTestResult, setLineTestResult] = useState<'idle' | 'ok' | 'error'>('idle');
+  // 工作日誌多選匯出
+  const [selectedSprintIds, setSelectedSprintIds] = useState<Set<string>>(new Set());
+  const [showJournalModal, setShowJournalModal] = useState(false);
+  const [journalDailyText, setJournalDailyText] = useState('');
+  const [journalWeeklyText, setJournalWeeklyText] = useState('');
+  const [journalType, setJournalType] = useState<'daily' | 'weekly'>('daily');
+  const [journalLoading, setJournalLoading] = useState(false);
+  const [journalCopied, setJournalCopied] = useState(false);
+  const [journalDate, setJournalDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [journalRangeFrom, setJournalRangeFrom] = useState('');
+  const [journalRangeTo, setJournalRangeTo] = useState('');
+  const journalRawRef = useRef<JournalRawData | null>(null);
 
   const syncTeamToLocalStorage = (members: TeamMember[]) => {
     localStorage.setItem('orgTeamMembers', JSON.stringify(members));
@@ -75,12 +197,167 @@ export default function SprintList() {
     await saveTeamMembers(teamMembers.map(m => m.id === id ? { ...m, [field]: value } : m));
   };
 
+  const saveHolidays = async (list: Holiday[]) => {
+    const sorted = [...list].sort((a, b) => a.date.localeCompare(b.date));
+    setHolidays(sorted);
+    localStorage.setItem('orgHolidays', JSON.stringify(sorted));
+    if (user) {
+      const ref = doc(db, 'users', user.uid);
+      await setDoc(ref, { holidays: sorted }, { merge: true });
+    }
+  };
+
+  const addHoliday = async () => {
+    const date = newHolidayDate.trim();
+    const name = newHolidayName.trim();
+    if (!date || !name) return;
+    await saveHolidays([...holidays, { id: Date.now().toString(), date, name }]);
+    setNewHolidayDate('');
+    setNewHolidayName('');
+  };
+
+  const removeHoliday = async (id: string) => {
+    await saveHolidays(holidays.filter(h => h.id !== id));
+  };
+
+  // ── LINE 推播 ──
+  const loadLineUsers = async () => {
+    if (!user) return;
+    setLineUsersLoading(true);
+    try {
+      const { collection: col, getDocs: gd } = await import('firebase/firestore');
+      const snap = await gd(col(db, 'lineUsers'));
+      const list = snap.docs
+        .map(d => d.data() as { lineUserId: string; displayName: string; blocked?: boolean })
+        .filter(u => !u.blocked)
+        .sort((a, b) => a.displayName.localeCompare(b.displayName, 'zh-TW'));
+      setLineUsers(list);
+    } catch {}
+    setLineUsersLoading(false);
+  };
+
+  const saveLineSettings = async (recipients: string[], schedule: typeof lineSchedule) => {
+    if (!user) return;
+    const payload = { recipients, schedule };
+    localStorage.setItem('lineSettings', JSON.stringify(payload));
+    // 同步到 Firebase（lineSchedule collection）
+    try {
+      const { doc: fd, setDoc: sd } = await import('firebase/firestore');
+      await sd(fd(db, 'lineSchedule', user.uid), {
+        ...schedule,
+        recipients,
+        lastDailyText: journalDailyText || '',
+        lastWeeklyText: journalWeeklyText || '',
+        updatedAt: Date.now(),
+      }, { merge: true });
+    } catch {}
+  };
+
+  const toggleLineRecipient = (lineUserId: string) => {
+    const next = lineRecipients.includes(lineUserId)
+      ? lineRecipients.filter(id => id !== lineUserId)
+      : [...lineRecipients, lineUserId];
+    setLineRecipients(next);
+    saveLineSettings(next, lineSchedule);
+  };
+
+  const updateLineSchedule = (patch: Partial<typeof lineSchedule>) => {
+    const next = { ...lineSchedule, ...patch };
+    setLineSchedule(next);
+    saveLineSettings(lineRecipients, next);
+  };
+
+  const sendLineJournal = async () => {
+    if (!lineRecipients.length) { alert('請先選取至少一位 LINE 收件人'); return; }
+    const text = journalType === 'daily' ? journalDailyText : journalWeeklyText;
+    if (!text.trim()) { alert('日誌內容為空'); return; }
+    setLineSending(true);
+    try {
+      const res = await fetch('/api/send-line', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipients: lineRecipients, text }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '發送失敗');
+      setLineSent(true);
+      setTimeout(() => setLineSent(false), 3000);
+    } catch (e: unknown) {
+      alert(`發送失敗：${e instanceof Error ? e.message : e}`);
+    }
+    setLineSending(false);
+  };
+
+  const sendLineTest = async () => {
+    if (!lineRecipients.length) { alert('請先勾選至少一位收件人'); return; }
+    setLineTestSending(true);
+    setLineTestResult('idle');
+    try {
+      const res = await fetch('/api/send-line', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipients: lineRecipients, text: '🔔 這是來自 Scrum 系統的測試訊息，LINE 推播功能已成功連線！' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '發送失敗');
+      setLineTestResult('ok');
+    } catch (e: unknown) {
+      setLineTestResult('error');
+      alert(`測試發送失敗：${e instanceof Error ? e.message : e}`);
+    }
+    setLineTestSending(false);
+    setTimeout(() => setLineTestResult('idle'), 5000);
+  };
+
+  useEffect(() => {
+    // 從 localStorage 還原 LINE 設定
+    try {
+      const raw = localStorage.getItem('lineSettings');
+      if (raw) {
+        const { recipients, schedule } = JSON.parse(raw);
+        if (recipients) setLineRecipients(recipients);
+        if (schedule) setLineSchedule(schedule);
+      }
+    } catch {}
+  }, []);
+
+  // 當日誌文字更新時，同步到 Firebase 供定時發送使用
+  useEffect(() => {
+    if (!user || (!journalDailyText && !journalWeeklyText)) return;
+    import('firebase/firestore').then(({ doc: fd, setDoc: sd }) => {
+      sd(fd(db, 'lineSchedule', user.uid), {
+        lastDailyText: journalDailyText,
+        lastWeeklyText: journalWeeklyText,
+        updatedAt: Date.now(),
+      }, { merge: true }).catch(() => {});
+    });
+  }, [journalDailyText, journalWeeklyText, user]);
+
   useEffect(() => {
     // 如果載入超過 5 秒，顯示逾時提示
     const timer = setTimeout(() => {
       setLoadTimeout(true);
     }, 5000);
     return () => clearTimeout(timer);
+  }, []);
+
+  // 強制逾時保底：Firebase auth 若 7 秒仍未回應，以 localStorage 資料強制解鎖
+  const loadingRef = React.useRef(true);
+  useEffect(() => { loadingRef.current = loading; }, [loading]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!loadingRef.current) return;
+      try {
+        const saved = localStorage.getItem('sprints');
+        if (saved) {
+          const parsed = JSON.parse(saved).filter((s: Sprint) => s && s.id && s.id !== 'default' && s.createdAt);
+          setSprints(parsed);
+        }
+      } catch {}
+      setLoading(false);
+    }, 7000);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -119,8 +396,11 @@ export default function SprintList() {
           }
 
           if (targetSprint) {
-            // 找到該專案，自動進入 (設定一個檢視者標記，可供內部後續擴充權限判斷)
-            localStorage.setItem('sprintRole_' + targetSprintId, 'viewer_via_link');
+            // 若不在用戶清單中（非擁有者/協作者），先設唯讀旗標；selectSprint 會處理角色判斷
+            const isInUserList = !!sprints.find(s => s.id === targetSprintId);
+            if (!isInUserList) {
+              localStorage.setItem('sprintRole_' + targetSprintId, 'viewer_via_link');
+            }
             selectSprint(targetSprint.id, targetSprint.name);
           } else {
             // 區分錯誤類型，給出有意義的提示
@@ -156,22 +436,61 @@ export default function SprintList() {
           const sprintsRef = collection(db, 'sprints');
           const qOwned = query(sprintsRef, where('ownerId', '==', user.uid));
           const snapOwned = await getDocs(qOwned);
-          
+
+          // 自動修復：確保每個自己擁有的 Sprint 的 collaboratorEmails 都是小寫且與 collaborators 同步
+          // 讓其他使用者的查詢能正確找到（Firestore array-contains 大小寫敏感）
+          await Promise.all(snapOwned.docs.map(async (d) => {
+            const data = d.data();
+            const collabs: { email: string; role: string }[] = data.collaborators || [];
+            if (collabs.length === 0) return;
+            const normalizedEmails = collabs.map(c => c.email.toLowerCase());
+            const storedEmails: string[] = data.collaboratorEmails || [];
+            console.log('[RepairEmails] Sprint:', d.id, '| collaborators:', collabs.map(c => c.email), '| collaboratorEmails:', storedEmails);
+            const needsUpdate =
+              normalizedEmails.length !== storedEmails.length ||
+              normalizedEmails.some((e, i) => e !== storedEmails[i]);
+            if (needsUpdate) {
+              console.log('[RepairEmails] ⬆️ 修復 collaboratorEmails:', normalizedEmails);
+              try {
+                await setDoc(doc(db, 'sprints', d.id), {
+                  collaborators: collabs.map(c => ({ ...c, email: c.email.toLowerCase() })),
+                  collaboratorEmails: normalizedEmails,
+                }, { merge: true });
+                console.log('[RepairEmails] ✅ 修復成功');
+              } catch (err) {
+                console.error('[RepairEmails] ❌ 修復失敗:', err);
+              }
+            } else {
+              console.log('[RepairEmails] ✓ 不需修復');
+            }
+          }));
+
           let sharedDocs: Sprint[] = [];
           if (user.email) {
-            const qShared = query(sprintsRef, where('collaboratorEmails', 'array-contains', user.email));
+            // 正規化 email 為小寫，避免大小寫不一致導致查不到
+            const userEmailLower = user.email.toLowerCase();
+            console.log('[SharedSprints] 查詢協作者 email:', userEmailLower);
+            const qShared = query(sprintsRef, where('collaboratorEmails', 'array-contains', userEmailLower));
             const snapShared = await getDocs(qShared);
             sharedDocs = snapShared.docs.map(doc => doc.data() as Sprint);
+            console.log('[SharedSprints] 查詢結果筆數:', snapShared.docs.length);
+            snapShared.docs.forEach(d => {
+              const data = d.data();
+              console.log('[SharedSprints] 找到 sprint:', d.id, '| name:', data.name, '| collaboratorEmails:', data.collaboratorEmails);
+            });
+            if (snapShared.docs.length === 0) {
+              console.log('[SharedSprints] ⚠️ 查無共用 Sprint。可能原因：1) collaboratorEmails 欄位不存在或 email 大小寫不符，2) 擁有者尚未開啟大廳觸發修復。請確認擁有者已登入大廳後再試。');
+            }
           }
-          
+
           // 合併去重複
           const allDocs = [...snapOwned.docs.map(d => d.data() as Sprint), ...sharedDocs];
           const uniqueDocsMap = new Map();
           allDocs.forEach(d => uniqueDocsMap.set(d.id, d));
-          
+
           let loaded = Array.from(uniqueDocsMap.values());
           if (loaded.length > 0) {
-            
+
             // 過濾並刪除壞掉的雲端資料
             const badDocs = loaded.filter(s => !s || !s.id || s.id === 'default' || !s.createdAt);
             for (const bad of badDocs) {
@@ -179,14 +498,22 @@ export default function SprintList() {
                  await deleteDoc(doc(db, 'sprints', bad.id || 'default'));
                } catch(err) { console.error(err) }
             }
-            
+
             loaded = loaded.filter(s => s && s.id && s.id !== 'default' && s.createdAt).sort((a, b) => b.createdAt - a.createdAt);
             setSprints(loaded);
           } else {
-            // 如果剛登入且沒有資料，可以選擇把 local 的塞進去，或給個預設
-            const initial = [{ id: `sprint-${Date.now()}`, name: '我的第一個 Sprint', createdAt: Date.now() }];
-            setSprints(initial);
-            await setDoc(doc(db, 'sprints', initial[0].id), { ...initial[0], ownerId: user.uid, collaborators: [] });
+            // 此用戶既無自己的 Sprint，也無被共用的 Sprint
+            // 只有確認是全新用戶（無 sharedDocs 也無 ownedDocs）才建立預設 Sprint
+            // 避免協作者因 email 不符合查詢而被錯誤建立新 Sprint
+            const hasOwnedDocs = snapOwned.docs.length > 0;
+            const hasSharedDocs = sharedDocs.length > 0;
+            if (!hasOwnedDocs && !hasSharedDocs) {
+              const initial = [{ id: `sprint-${Date.now()}`, name: '我的第一個 Sprint', createdAt: Date.now() }];
+              setSprints(initial);
+              await setDoc(doc(db, 'sprints', initial[0].id), { ...initial[0], ownerId: user.uid, collaborators: [] });
+            } else {
+              setSprints([]);
+            }
           }
         } catch (error) {
           console.error("載入專案失敗:", error);
@@ -242,8 +569,10 @@ export default function SprintList() {
           }
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const tasks: any[] = backlog?.tasks ?? [];
-          const allTasks = tasks.filter(t => t.type === 'task');
           const pbis = tasks.filter(t => t.status === 'pbi');
+          const pbiIdSet = new Set(pbis.map((t: { id: string }) => t.id));
+          // 只計算屬於現有 PBI 的任務，排除孤兒任務
+          const allTasks = tasks.filter(t => t.type === 'task' && t.pbiId && pbiIdSet.has(t.pbiId));
           const startDate: string = planning?.startDate ?? '';
           const sprintDays: number = Number(backlog?.sprintDays ?? 0);
           let endDate = '';
@@ -273,20 +602,55 @@ export default function SprintList() {
     fetchDashboard();
   }, [sprints, loading, user]);
 
-  // 載入成員庫
+  // 預設勾選「進行中」Sprint
+  useEffect(() => {
+    if (dashLoading) return;
+    setSelectedSprintIds(prev => {
+      if (prev.size > 0) return prev;
+      const inProgress = sprints.filter(s => {
+        const d = dashboards[s.id];
+        const total = d?.totalTasks ?? 0;
+        const td = d?.todo ?? 0;
+        const dg = d?.doing ?? 0;
+        const auto = total === 0 ? 'pending' : (td === 0 && dg === 0) ? 'completed' : dg > 0 ? 'in-progress' : 'pending';
+        return (s.sprintStatus ?? auto) === 'in-progress';
+      });
+      return new Set(inProgress.map(s => s.id));
+    });
+  }, [dashLoading, sprints, dashboards]);
+
+  // 日期變更時重新產生日誌文字
+  useEffect(() => {
+    if (!journalRawRef.current || journalLoading) return;
+    if (journalType === 'daily') {
+      setJournalDailyText(buildDailyText(journalRawRef.current, journalDate));
+    } else {
+      setJournalWeeklyText(buildWeeklyText(journalRawRef.current, journalRangeFrom, journalRangeTo));
+    }
+  }, [journalDate, journalRangeFrom, journalRangeTo, journalType, journalLoading]);
+
+  // 載入成員庫 & 假日庫
   useEffect(() => {
     const local = localStorage.getItem('orgTeamMembers');
-    if (local) {
-      try { setTeamMembers(JSON.parse(local)); } catch {}
-    }
+    if (local) { try { setTeamMembers(JSON.parse(local)); } catch {} }
+    const localH = localStorage.getItem('orgHolidays');
+    if (localH) { try { setHolidays(JSON.parse(localH)); } catch {} }
     if (!user) return;
     (async () => {
       try {
         const snap = await getDoc(doc(db, 'users', user.uid));
-        if (snap.exists() && snap.data().teamMembers) {
-          const members: TeamMember[] = snap.data().teamMembers;
-          setTeamMembers(members);
-          syncTeamToLocalStorage(members);
+        if (snap.exists()) {
+          const d = snap.data();
+          if (d.teamMembers) {
+            const members: TeamMember[] = d.teamMembers;
+            setTeamMembers(members);
+            syncTeamToLocalStorage(members);
+          }
+          if (d.holidays) {
+            const list: Holiday[] = d.holidays;
+            setHolidays(list);
+            localStorage.setItem('orgHolidays', JSON.stringify(list));
+          }
         }
       } catch {}
     })();
@@ -313,6 +677,43 @@ export default function SprintList() {
   };
 
   
+  const copySprint = async (sourceId: string) => {
+    const newId = `sprint-${Date.now()}`;
+    if (user) {
+      const sourceSnap = await getDoc(doc(db, 'sprints', sourceId));
+      if (!sourceSnap.exists()) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const src: any = sourceSnap.data();
+      const copyData = {
+        ...src,
+        id: newId,
+        name: `${src.name || '未命名 Sprint'} (複製)`,
+        createdAt: Date.now(),
+        sprintStatus: 'pending',
+        ownerId: user.uid,
+        collaborators: [],
+        collaboratorEmails: [],
+        editHistory: [],
+      };
+      await setDoc(doc(db, 'sprints', newId), copyData);
+      const newSprint: Sprint = { id: newId, name: copyData.name, createdAt: copyData.createdAt, ownerId: user.uid, collaborators: [], sprintStatus: 'pending' };
+      setSprints(prev => [newSprint, ...prev]);
+      setEditingId(newId);
+    } else {
+      const source = sprints.find(s => s.id === sourceId);
+      if (!source) return;
+      ['planning', 'backlog', 'review', 'retrospective', 'daily-scrum'].forEach(page => {
+        const data = localStorage.getItem(`sprint_${sourceId}_${page}`);
+        if (data) localStorage.setItem(`sprint_${newId}_${page}`, data);
+      });
+      const copyData: Sprint = { id: newId, name: `${source.name} (複製)`, createdAt: Date.now(), sprintStatus: 'pending', collaborators: [] };
+      const updated = [copyData, ...sprints];
+      setSprints(updated);
+      localStorage.setItem('sprints', JSON.stringify(updated));
+      setEditingId(newId);
+    }
+  };
+
   const updateSprintStatus = async (sprintId: string, newStatus: Sprint['sprintStatus']) => {
     setSprints(prev => prev.map(s => s.id === sprintId ? { ...s, sprintStatus: newStatus } : s));
     if (user) {
@@ -324,33 +725,39 @@ export default function SprintList() {
   };
 
   const handleAddCollaborator = async () => {
-    if (!shareModalSprint || !shareEmail) return;
-    
+    if (!shareModalSprint || !shareEmail || !user) return;
+
+    const normalizedEmail = shareEmail.trim().toLowerCase();
     let currentCollabs = shareModalSprint.collaborators || [];
-    if (currentCollabs.find(c => c.email === shareEmail)) return;
-    
-    currentCollabs = [...currentCollabs, { email: shareEmail, role: shareRole }];
-    const emails = currentCollabs.map(c => c.email);
-    
+    if (currentCollabs.find(c => c.email.toLowerCase() === normalizedEmail)) {
+      alert('此 Email 已在協作者清單中。');
+      return;
+    }
+
+    currentCollabs = [...currentCollabs, { email: normalizedEmail, role: shareRole }];
+    const emails = currentCollabs.map(c => c.email.toLowerCase());
+
     const updatedData = { collaborators: currentCollabs, collaboratorEmails: emails };
-    
+
     try {
       await setDoc(doc(db, 'sprints', shareModalSprint.id), updatedData, { merge: true });
-      // Update local state directly on the modal sprint as well so the UI updates
       setShareModalSprint({ ...shareModalSprint, ...updatedData });
       setSprints(prev => prev.map(s => s.id === shareModalSprint.id ? { ...s, ...updatedData } : s));
       setShareEmail('');
+      alert(`✅ 已成功邀請 ${normalizedEmail} 成為協作者！`);
     } catch(err) {
       console.error(err);
+      alert('邀請失敗，請稍後再試。');
     }
   };
   
   const handleRemoveCollaborator = async (email: string) => {
     if (!shareModalSprint) return;
-    
+
+    const normalizedEmail = email.toLowerCase();
     let currentCollabs = shareModalSprint.collaborators || [];
-    currentCollabs = currentCollabs.filter(c => c.email !== email);
-    const emails = currentCollabs.map(c => c.email);
+    currentCollabs = currentCollabs.filter(c => c.email.toLowerCase() !== normalizedEmail);
+    const emails = currentCollabs.map(c => c.email.toLowerCase());
     
     const updatedData = { collaborators: currentCollabs, collaboratorEmails: emails };
     
@@ -418,21 +825,191 @@ export default function SprintList() {
     }
   };
 
+  // ── 工作日誌輔助 ──
+  const WEEKDAYS_J = WEEKDAYS_J_MOD;
+
+  function jGetNote(map: Record<number, unknown>, day: number, person: string): string {
+    const v = map[day];
+    if (!v || typeof v === 'string') return '';
+    return (v as Record<string, string>)[person] || '';
+  }
+
+  function jDays(tl: unknown): number {
+    if (tl === '30d') return 30;
+    const n = Number(tl);
+    return Number.isFinite(n) && n > 0 ? n * 7 : 30;
+  }
+
+  const toggleSprintSelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedSprintIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleExportJournal = async () => {
+    if (selectedSprintIds.size === 0) return;
+    setShowJournalModal(true);
+    setJournalLoading(true);
+    setJournalDailyText('');
+    setJournalWeeklyText('');
+
+    const now = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const selectedNames = Array.from(selectedSprintIds).map(id => sprints.find(s => s.id === id)?.name || id);
+    const headerMeta = `產出時間：${now}\nSprint：${selectedNames.join('、')}\n${'='.repeat(50)}\n`;
+
+    const allData: JSprintData[] = [];
+    // 跨 sprint 日期聯集，避免重疊時段重複計算容量
+    const personDateSets = new Map<string, Set<string>>();
+
+    for (const sprintId of Array.from(selectedSprintIds)) {
+      const sprint = sprints.find(s => s.id === sprintId);
+      const sprintName = sprint?.name || sprintId;
+      try {
+        const snap = await getDoc(doc(db, 'sprints', sprintId));
+        if (!snap.exists()) { allData.push({ name: sprintName, goal: '', totalDays: 0, completionPct: 0, workloads: [], days: [] }); continue; }
+        const data = snap.data();
+        const planning = data.planning || {};
+        const backlog = data.backlog || {};
+        const daily = data.daily || {};
+        const devsList: { name: string; role: string }[] =
+          Array.isArray(planning.devsList) && planning.devsList.length > 0
+            ? planning.devsList.filter((d: { name: string }) => d.name)
+            : typeof planning.devs === 'string' && planning.devs
+              ? planning.devs.split(',').map((n: string) => ({ name: n.trim(), role: '' })).filter((d: { name: string }) => d.name)
+              : [];
+        const devNames: string[] = devsList.map(d => d.name);
+        const devRoleMap: Record<string, string> = Object.fromEntries(devsList.map(d => [d.name, d.role || '']));
+        const completedDays: boolean[] = daily.completedDays || [];
+        const q1Map: Record<number, unknown> = daily.dailyNotesQ1 || {};
+        const q2Map: Record<number, unknown> = daily.dailyNotesQ2 || {};
+        const q3Map: Record<number, unknown> = daily.dailyNotesQ3 || {};
+        const totalDays = jDays(planning.timeLimit || planning.duration);
+        const base = planning.startDate ? new Date(planning.startDate) : null;
+        const days: JDay[] = [];
+        for (let i = 0; i < totalDays; i++) {
+          const entries: JEntry[] = devNames.map(name => ({
+            name, role: devRoleMap[name] || '', q1: jGetNote(q1Map, i, name), q2: jGetNote(q2Map, i, name), q3: jGetNote(q3Map, i, name),
+          }));
+          const hasRecord = entries.some(e => e.q1 || e.q2 || e.q3);
+          if (!hasRecord && !completedDays[i]) continue;
+          let dateStr = '', isoDate = '', dowStr = '';
+          if (base) {
+            const d = new Date(base); d.setDate(d.getDate() + i);
+            dateStr = `${d.getMonth() + 1}/${d.getDate()}`; dowStr = WEEKDAYS_J[d.getDay()];
+            isoDate = d.toISOString().slice(0, 10);
+          }
+          days.push({ idx: i, date: dateStr, isoDate, dow: dowStr, done: !!completedDays[i], entries });
+        }
+        const dash = dashboards[sprintId];
+        const completionPct = dash && dash.totalTasks > 0 ? Math.round(dash.done / dash.totalTasks * 100) : 0;
+        // 計算每人工作負荷
+        const parseHrs = (t: string) => { if (!t) return 0; const s = t.trim().toLowerCase(); if (s.endsWith('d')) return (parseFloat(s)||0)*8; if (s.endsWith('h')) return parseFloat(s)||0; if (s.endsWith('m')) return (parseFloat(s)||0)/60; return parseFloat(s)||0; };
+        const sprintDaysNum = Number(backlog.sprintDays) || totalDays || 14;
+        const allTasks: { role?: string; time?: string; status?: string; type?: string; pbiId?: string; id?: string }[] = backlog.tasks || [];
+        const pbiIds = new Set(allTasks.filter(t => t.status === 'pbi').map(t => t.id));
+        const taskItems = allTasks.filter(t => t.type === 'task' && t.pbiId && pbiIds.has(t.pbiId));
+        // 把此 sprint 工作日加入每人的日期聯集
+        const sprintStart = planning.startDate ? new Date(planning.startDate) : null;
+        const workloads: JPersonLoad[] = devsList.map(dev => {
+          const myTasks = taskItems.filter(t => t.role?.split(',').map(r => r.trim()).includes(dev.name));
+          const assigned = myTasks.reduce((s, t) => s + parseHrs(t.time || ''), 0);
+          if (!personDateSets.has(dev.name)) personDateSets.set(dev.name, new Set<string>());
+          const daySet = personDateSets.get(dev.name)!;
+          if (sprintStart) {
+            for (let i = 0; i < sprintDaysNum; i++) {
+              const d = new Date(sprintStart); d.setDate(sprintStart.getDate() + i);
+              if (d.getDay() !== 0 && d.getDay() !== 6) daySet.add(d.toISOString().slice(0, 10));
+            }
+          }
+          const capacity = sprintDaysNum * 8;
+          return { name: dev.name, role: dev.role || '', assigned: Math.round(assigned * 10) / 10, capacity, loadPct: 0 };
+        });
+        allData.push({ name: sprintName, goal: backlog.sprintGoal || planning.goal || '', totalDays, completionPct, workloads, days });
+      } catch { allData.push({ name: sprintName, goal: '', totalDays: 0, completionPct: 0, workloads: [], days: [] }); }
+    }
+
+    // ── 彙總各人跨 Sprint 總負荷（日期聯集，避免重疊時段重複計算）──
+    const totalLoadMap = new Map<string, { role: string; assigned: number }>();
+    for (const s of allData) {
+      for (const w of s.workloads) {
+        const cur = totalLoadMap.get(w.name) || { role: w.role, assigned: 0 };
+        cur.assigned += w.assigned;
+        if (!cur.role && w.role) cur.role = w.role;
+        totalLoadMap.set(w.name, cur);
+      }
+    }
+    const totalLoadLines = Array.from(totalLoadMap.entries()).map(([name, v]) => {
+      const daySet = personDateSets.get(name);
+      const capacity = daySet && daySet.size > 0 ? daySet.size * 8 : 0;
+      const pct = capacity > 0 ? Math.round(v.assigned / capacity * 100) : 0;
+      return `  ${name}${v.role ? `(${v.role})` : ''}：${pct}%（${v.assigned}h / ${capacity}h）`;
+    });
+
+    // ── 儲存原始資料，再由 builder 依選定日期產生文字 ──
+    const raw: JournalRawData = { allData, loadLines: totalLoadLines, headerMeta };
+    journalRawRef.current = raw;
+    const today = new Date();
+    const todayIso = today.toISOString().slice(0, 10);
+    // 本週一～本週日（週一為週首）
+    const dow = today.getDay(); // 0=日,1=一,...,6=六
+    const diffToMon = dow === 0 ? -6 : 1 - dow;
+    const monday = new Date(today); monday.setDate(today.getDate() + diffToMon);
+    const friday = new Date(monday); friday.setDate(monday.getDate() + 4);
+    const weekFrom = monday.toISOString().slice(0, 10);
+    const weekTo = friday.toISOString().slice(0, 10);
+    setJournalDate(todayIso);
+    setJournalRangeFrom(weekFrom);
+    setJournalRangeTo(weekTo);
+    setJournalDailyText(buildDailyText(raw, todayIso));
+    setJournalWeeklyText(buildWeeklyText(raw, weekFrom, weekTo));
+    setJournalLoading(false);
+  };
+
   const selectSprint = async (id: string, name: string) => {
     localStorage.setItem('currentSprintId', id);
     localStorage.setItem('currentSprintName', name);
+    // 根據用戶在此 sprint 的角色決定存取模式
+    const sprint = sprints.find(s => s.id === id);
+    if (sprint) {
+      const isOwner = !sprint.ownerId || sprint.ownerId === user?.uid;
+      const collaboratorRole = sprint.collaborators?.find(
+        c => c.email.toLowerCase() === (user?.email || '').toLowerCase()
+      )?.role;
+      if (!isOwner && collaboratorRole === 'viewer') {
+        localStorage.setItem('sprintRole_' + id, 'viewer_via_link');
+      } else {
+        localStorage.removeItem('sprintRole_' + id);
+      }
+    }
+    // 若 sprint 不在清單中（link viewer），viewer_via_link 已在 checkLink 設定
     // 寫入 Firestore，讓 scrum-project-new 同一帳號能讀到同一個 sprintId
     if (user) {
       try {
         await setDoc(doc(db, 'users', user.uid), { currentSprintId: id }, { merge: true });
       } catch {}
     }
-    window.location.href = '/planning';
+    window.location.href = `/planning?sprint=${id}`;
   };
+
+  // 已完成的 Sprint 自動沉底，進行中 > 待開始 > 已完成
+  const statusOrder: Record<string, number> = { 'in-progress': 0, 'pending': 1, 'completed': 2 };
+  const getSortStatus = (s: Sprint) => {
+    const d = dashboards[s.id];
+    const total = d?.totalTasks ?? 0;
+    const td = d?.todo ?? 0;
+    const dg = d?.doing ?? 0;
+    const auto = (total === 0 || dashLoading) ? 'pending' : (td === 0 && dg === 0) ? 'completed' : dg > 0 ? 'in-progress' : 'pending';
+    return s.sprintStatus ?? auto;
+  };
+  const ownedSprints = (user ? sprints.filter(s => s.ownerId === user.uid || !s.ownerId) : sprints).sort((a, b) => statusOrder[getSortStatus(a)] - statusOrder[getSortStatus(b)]);
+  const sharedSprints = (user ? sprints.filter(s => !!(s.ownerId && s.ownerId !== user.uid)) : []).sort((a, b) => statusOrder[getSortStatus(a)] - statusOrder[getSortStatus(b)]);
 
   return (
     <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
-      <div className="max-w-4xl mx-auto space-y-8">
+      <div className="w-full space-y-8">
         
         {/* Header */}
         <div className="bg-[#fffdf9] border-4 border-[#5b755e] p-8 rounded-3xl shadow-xl relative overflow-hidden">
@@ -469,7 +1046,29 @@ export default function SprintList() {
                 </button>
               )}
               
-              <button 
+              {user && (
+                <Link
+                  href="/report"
+                  className="bg-[#5b755e] text-white px-5 py-3 rounded-xl font-bold shadow-md hover:bg-[#4a614d] transition-all hover:-translate-y-1 border-2 border-[#3e5241] flex items-center gap-2"
+                >
+                  <span>📊</span> 成效報告
+                </Link>
+              )}
+              <button
+                onClick={handleExportJournal}
+                disabled={selectedSprintIds.size === 0}
+                className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold shadow-md transition-all border-2 ${
+                  selectedSprintIds.size > 0
+                    ? 'bg-[#f2e3c6] text-[#8b5a2b] border-[#d4a373] hover:bg-[#e8d0a8] hover:-translate-y-1'
+                    : 'bg-[#ede9e2] text-[#b5a695] border-[#d3cbbd] cursor-not-allowed'
+                }`}
+                title={selectedSprintIds.size === 0 ? '請先勾選欲匯出的 Sprint' : `匯出 ${selectedSprintIds.size} 個 Sprint 的工作日誌`}
+              >
+                <span>📋</span>
+                {selectedSprintIds.size > 0 ? `匯出工作日誌 (${selectedSprintIds.size})` : '匯出工作日誌'}
+              </button>
+
+              <button
                 onClick={createSprint}
                 className="bg-[#e07a5f] text-white px-6 py-3 rounded-xl font-bold shadow-md hover:bg-[#c66147] transition-all hover:-translate-y-1 border-2 border-[#8a4231] flex items-center gap-2"
               >
@@ -479,72 +1078,173 @@ export default function SprintList() {
           </div>
         </div>
 
-        {/* 🧑‍💼 組織成員庫 */}
+        {/* ⚙️ 組織設定 */}
         <div className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-lg overflow-hidden">
           <button
             onClick={() => setShowTeamSection(prev => !prev)}
             className="w-full bg-[#5b755e] p-4 flex items-center justify-between text-white font-bold text-lg hover:bg-[#4a614d] transition-colors"
           >
             <div className="flex items-center gap-2">
-              <span>🧑‍💼</span>
-              <span>組織成員庫</span>
-              <span className="text-sm font-medium opacity-80 ml-1">— 在此設定成員，開 Sprint 時快速挑選</span>
+              <span>⚙️</span><span>組織設定</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm bg-white/20 px-2 py-0.5 rounded-full">{teamMembers.length} 位</span>
+              <span className="text-sm bg-white/20 px-2 py-0.5 rounded-full">{teamMembers.length} 位成員</span>
+              <span className="text-sm bg-white/20 px-2 py-0.5 rounded-full">{holidays.length} 筆假日</span>
+              <span className="text-sm bg-white/20 px-2 py-0.5 rounded-full">{lineRecipients.length} 位 LINE</span>
               <span className="text-xl">{showTeamSection ? '▲' : '▼'}</span>
             </div>
           </button>
 
           {showTeamSection && (
-            <div className="p-6 space-y-4">
-              {/* 成員列表 */}
-              {teamMembers.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  {teamMembers.map(m => (
-                    <div key={m.id} className="bg-[#f4f1ea] border-2 border-[#d3cbbd] rounded-xl p-3 flex items-center gap-2 group">
-                      <div className="w-9 h-9 rounded-full bg-[#8fb996] flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                        {(m.name || '?').slice(0, 1)}
-                      </div>
-                      <input
-                        type="text"
-                        value={m.name}
-                        onChange={e => updateMemberField(m.id, 'name', e.target.value)}
-                        className="flex-1 min-w-0 bg-transparent font-bold text-[#3e362e] outline-none border-b border-transparent focus:border-[#8fb996] text-sm"
-                        placeholder="姓名"
-                      />
-                      <button
-                        onClick={() => removeMember(m.id)}
-                        className="text-[#c96262] opacity-0 group-hover:opacity-100 hover:bg-[#fceded] p-1 rounded transition-all"
-                        title="移除"
-                      >
-                        ✕
-                      </button>
+            <div className="p-6 space-y-6">
+              {/* 三分頁切換 */}
+              <div className="flex rounded-xl overflow-hidden border-2 border-[#b5a695] w-fit flex-wrap">
+                {([['members','🧑‍💼 成員庫'],['holidays','🎌 國定假日'],['line','📱 LINE 推播']] as const).map(([tab, label], i) => (
+                  <button key={tab}
+                    onClick={() => { setOrgSettingsTab(tab); if (tab === 'line') loadLineUsers(); }}
+                    className={`px-4 py-2 text-sm font-bold transition-colors ${i > 0 ? 'border-l-2 border-[#b5a695]' : ''} ${orgSettingsTab === tab ? 'bg-[#5b755e] text-white' : 'bg-white text-[#5b755e] hover:bg-[#f4f1ea]'}`}
+                  >{label}</button>
+                ))}
+              </div>
+
+              {/* 成員庫 */}
+              {orgSettingsTab === 'members' && (
+                <div className="space-y-4">
+                  {teamMembers.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {teamMembers.map(m => (
+                        <div key={m.id} className="bg-[#f4f1ea] border-2 border-[#d3cbbd] rounded-xl p-3 flex items-center gap-2 group">
+                          <div className="w-9 h-9 rounded-full bg-[#8fb996] flex items-center justify-center text-white font-bold text-sm flex-shrink-0">{(m.name||'?').slice(0,1)}</div>
+                          <input type="text" value={m.name} onChange={e => updateMemberField(m.id,'name',e.target.value)}
+                            className="flex-1 min-w-0 bg-transparent font-bold text-[#3e362e] outline-none border-b border-transparent focus:border-[#8fb996] text-sm" placeholder="姓名" />
+                          <button onClick={() => removeMember(m.id)} className="text-[#c96262] opacity-0 group-hover:opacity-100 hover:bg-[#fceded] p-1 rounded transition-all" title="移除">✕</button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : <p className="text-[#b5a695] text-sm text-center py-2">尚未新增任何成員。</p>}
+                  <div className="flex gap-2 items-center flex-wrap">
+                    <input type="text" value={newMemberName} onChange={e => setNewMemberName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addMember()}
+                      placeholder="輸入成員姓名，按 Enter 新增"
+                      className="flex-1 min-w-[180px] px-3 py-2 border-2 border-[#b5a695] rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#8fb996]/50 text-sm" />
+                    <button onClick={addMember} disabled={!newMemberName.trim()}
+                      className="bg-[#8fb996] text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-[#78a07e] transition-all disabled:opacity-40 disabled:cursor-not-allowed border-2 border-[#5b755e] shadow-sm">＋ 新增成員</button>
+                  </div>
                 </div>
-              ) : (
-                <p className="text-[#b5a695] text-sm text-center py-2">尚未新增任何成員。新增後可在 Sprint Planning 中快速挑選。</p>
               )}
 
-              {/* 新增成員 */}
-              <div className="flex gap-2 items-center flex-wrap">
-                <input
-                  type="text"
-                  value={newMemberName}
-                  onChange={e => setNewMemberName(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && addMember()}
-                  placeholder="輸入成員姓名，按 Enter 新增"
-                  className="flex-1 min-w-[180px] px-3 py-2 border-2 border-[#b5a695] rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#8fb996]/50 text-sm"
-                />
-                <button
-                  onClick={addMember}
-                  disabled={!newMemberName.trim()}
-                  className="bg-[#8fb996] text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-[#78a07e] transition-all disabled:opacity-40 disabled:cursor-not-allowed border-2 border-[#5b755e] shadow-sm"
-                >
-                  ＋ 新增成員
-                </button>
-              </div>
+              {/* 假日 */}
+              {orgSettingsTab === 'holidays' && (
+                <div className="space-y-4">
+                  {holidays.length > 0 ? (
+                    <div className="space-y-2">
+                      {holidays.map(h => (
+                        <div key={h.id} className="bg-[#f4f1ea] border-2 border-[#d3cbbd] rounded-xl px-4 py-2.5 flex items-center gap-3 group">
+                          <span className="text-[#e07a5f] font-bold text-sm w-24 flex-shrink-0">{h.date}</span>
+                          <span className="flex-1 text-[#3e362e] font-medium text-sm">{h.name}</span>
+                          <button onClick={() => removeHoliday(h.id)} className="text-[#c96262] opacity-0 group-hover:opacity-100 hover:bg-[#fceded] px-2 py-1 rounded transition-all text-xs font-bold" title="刪除">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : <p className="text-[#b5a695] text-sm text-center py-2">尚未設定任何國定假日。</p>}
+                  <div className="flex gap-2 items-center flex-wrap">
+                    <input type="date" value={newHolidayDate} onChange={e => setNewHolidayDate(e.target.value)}
+                      className="px-3 py-2 border-2 border-[#b5a695] rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#8fb996]/50 text-sm" />
+                    <input type="text" value={newHolidayName} onChange={e => setNewHolidayName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addHoliday()}
+                      placeholder="假日名稱，例如：中秋節"
+                      className="flex-1 min-w-[160px] px-3 py-2 border-2 border-[#b5a695] rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#8fb996]/50 text-sm" />
+                    <button onClick={addHoliday} disabled={!newHolidayDate.trim()||!newHolidayName.trim()}
+                      className="bg-[#8fb996] text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-[#78a07e] transition-all disabled:opacity-40 disabled:cursor-not-allowed border-2 border-[#5b755e] shadow-sm whitespace-nowrap">＋ 新增假日</button>
+                  </div>
+                </div>
+              )}
+
+              {/* LINE 推播 */}
+              {orgSettingsTab === 'line' && (
+                <div className="space-y-5">
+                  {/* 設定說明 */}
+                  <div className="bg-[#e8f0f4] border-2 border-[#76a5af] rounded-2xl px-4 py-3 text-sm text-[#3e4a5e] space-y-1">
+                    <p className="font-bold text-[#467386]">📋 設定步驟</p>
+                    <p>1. 請確認已在 LINE Developers Console 設定 Webhook URL：</p>
+                    <code className="block bg-white px-2 py-1 rounded text-xs font-mono text-[#3e362e] border border-[#c2dce3] select-all">https://scrum-project-red.vercel.app/api/line-webhook</code>
+                    <p>2. 收件人掃 QR Code 加 Bot 好友，並傳送任意訊息給 Bot 完成登錄。</p>
+                    <p>3. 點「重新整理」載入已登錄成員，勾選後即可接收日誌。</p>
+                  </div>
+
+                  {/* 已登錄 LINE 用戶 */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-bold text-sm text-[#5b755e]">已登錄成員（勾選 = 接收日誌）</span>
+                      <button onClick={loadLineUsers} disabled={lineUsersLoading}
+                        className="text-xs text-[#5b755e] bg-[#e8eedd] border border-[#8fb996] px-3 py-1 rounded-lg hover:bg-[#dcedc1] transition-all disabled:opacity-50">
+                        {lineUsersLoading ? '載入中...' : '🔄 重新整理'}
+                      </button>
+                    </div>
+                    {lineUsers.length === 0 ? (
+                      <p className="text-[#b5a695] text-sm text-center py-3">尚無人加入 Bot。</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {lineUsers.map(u => (
+                          <label key={u.lineUserId} className="flex items-center gap-3 px-3 py-2.5 bg-[#f4f1ea] border-2 border-[#d3cbbd] rounded-xl cursor-pointer hover:bg-[#ece9e2] transition-colors">
+                            <input type="checkbox" checked={lineRecipients.includes(u.lineUserId)} onChange={() => toggleLineRecipient(u.lineUserId)}
+                              className="w-4 h-4 accent-[#5b755e]" />
+                            <div className="w-8 h-8 rounded-full bg-[#76a5af] flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                              {u.displayName.slice(0,1)}
+                            </div>
+                            <span className="font-medium text-sm text-[#3e362e]">{u.displayName}</span>
+                            {lineRecipients.includes(u.lineUserId) && <span className="ml-auto text-xs text-[#5b755e] font-bold">✓ 接收日誌</span>}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 定時發送設定 */}
+                  <div className="border-t-2 border-[#e8d5b5] pt-4 space-y-3">
+                    <p className="font-bold text-sm text-[#5b755e]">⏰ 定時自動發送（台灣時間）</p>
+                    <label className="flex items-center gap-3 text-sm">
+                      <input type="checkbox" checked={lineSchedule.dailyEnabled} onChange={e => updateLineSchedule({ dailyEnabled: e.target.checked })} className="w-4 h-4 accent-[#5b755e]" />
+                      <span className="font-medium text-[#3e362e]">日報：每個工作日</span>
+                      <select value={lineSchedule.dailyHour} onChange={e => updateLineSchedule({ dailyHour: Number(e.target.value) })}
+                        className="px-2 py-1 border border-[#b5a695] rounded text-sm bg-white">
+                        {Array.from({length:16},(_,i)=>i+7).map(h=>(
+                          <option key={h} value={h}>{h}:00</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-3 text-sm flex-wrap">
+                      <input type="checkbox" checked={lineSchedule.weeklyEnabled} onChange={e => updateLineSchedule({ weeklyEnabled: e.target.checked })} className="w-4 h-4 accent-[#5b755e]" />
+                      <span className="font-medium text-[#3e362e]">週報：每週</span>
+                      <select value={lineSchedule.weeklyDay} onChange={e => updateLineSchedule({ weeklyDay: Number(e.target.value) })}
+                        className="px-2 py-1 border border-[#b5a695] rounded text-sm bg-white">
+                        {(['一','二','三','四','五'] as const).map((d,i)=>(
+                          <option key={i+1} value={i+1}>週{d}</option>
+                        ))}
+                      </select>
+                      <select value={lineSchedule.weeklyHour} onChange={e => updateLineSchedule({ weeklyHour: Number(e.target.value) })}
+                        className="px-2 py-1 border border-[#b5a695] rounded text-sm bg-white">
+                        {Array.from({length:16},(_,i)=>i+7).map(h=>(
+                          <option key={h} value={h}>{h}:00</option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="text-xs text-[#8a7f72]">⚠ 定時發送會使用「工作日誌」最後一次產生的內容。建議在下班前先開啟日誌確認內容，系統會自動存檔。</p>
+                    <div className="flex items-center gap-3 pt-1">
+                      <button
+                        onClick={sendLineTest}
+                        disabled={lineTestSending || !lineRecipients.length}
+                        className={`px-4 py-2 rounded-xl font-bold text-sm transition-all disabled:opacity-40 ${
+                          lineTestResult === 'ok' ? 'bg-[#5b755e] text-white' :
+                          lineTestResult === 'error' ? 'bg-[#c96262] text-white' :
+                          'bg-[#e8eedd] text-[#5b755e] border border-[#8fb996] hover:bg-[#dcedc1]'
+                        }`}
+                      >
+                        {lineTestSending ? '傳送中...' : lineTestResult === 'ok' ? '✅ 測試成功！' : lineTestResult === 'error' ? '❌ 發送失敗' : '📨 測試發送'}
+                      </button>
+                      {lineTestResult === 'ok' && <span className="text-xs text-[#5b755e]">已傳送測試訊息，請確認手機 LINE 是否收到</span>}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -626,106 +1326,7 @@ export default function SprintList() {
                   </div>
                 )}
 
-                {/* 各 Sprint 進度卡片 */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {sprints.map(sprint => {
-                    const d = dashboards[sprint.id];
-                    const total = d?.totalTasks ?? 0;
-                    const dn = d?.done ?? 0;
-                    const dg = d?.doing ?? 0;
-                    const td = d?.todo ?? 0;
-                    const pbiTotal = d?.pbiTotal ?? 0;
-                    const pbiAcc = d?.pbiAccepted ?? 0;
-                    const rate = total > 0 ? Math.round(dn / total * 100) : 0;
-                    const dgRate = total > 0 ? Math.round(dg / total * 100) : 0;
-                    const isOverdue = !!(d?.endDate && new Date(d.endDate) < new Date() && (td > 0 || dg > 0));
-                    const autoStatus = (total === 0 || dashLoading) ? 'pending' : (td === 0 && dg === 0) ? 'completed' : dg > 0 ? 'in-progress' : 'pending';
-                    const selectStatus = sprint.sprintStatus ?? autoStatus;
-                    const selectCls = selectStatus === 'completed' ? 'bg-[#e8eedd] text-[#4a7c59]' : selectStatus === 'in-progress' ? 'bg-[#faebce] text-[#d4a373]' : 'bg-[#fceded] text-[#c96262]';
-                    return (
-                      <div key={sprint.id} onClick={() => selectSprint(sprint.id, sprint.name)}
-                        className="bg-[#faf8f5] border-2 border-[#e8d5b5] rounded-2xl p-5 cursor-pointer hover:border-[#8fb996] hover:shadow-md transition-all flex flex-col gap-3">
 
-                        {/* 名稱 + 狀態 */}
-                        <div className="flex justify-between items-start gap-2">
-                          <h3 className="font-bold text-[#3e362e] text-base leading-tight flex-1">{sprint.name}</h3>
-                          <select
-                            value={selectStatus}
-                            onClick={e => e.stopPropagation()}
-                            onChange={e => { e.stopPropagation(); updateSprintStatus(sprint.id, e.target.value as Sprint['sprintStatus']); }}
-                            className={`text-xs font-bold px-2 py-1 rounded-full flex-shrink-0 border-0 cursor-pointer outline-none ${selectCls}`}
-                          >
-                            <option value="pending">📋 待開始</option>
-                            <option value="in-progress">⚡ 進行中</option>
-                            <option value="completed">✅ 已完成</option>
-                          </select>
-                        </div>
-
-                        {/* Sprint 目標 */}
-                        <p className="text-xs text-[#6b5e50] line-clamp-2 min-h-[2rem]">
-                          {d?.sprintGoal || <span className="text-[#d3cbbd] italic">尚未設定 Sprint 目標</span>}
-                        </p>
-
-                        {/* 日期範圍 */}
-                        <div className="flex items-center gap-2 text-xs bg-[#f4f1ea] rounded-lg px-3 py-2">
-                          <span>📅</span>
-                          {dashLoading ? (
-                            <span className="text-[#d3cbbd]">載入中...</span>
-                          ) : d?.startDate ? (
-                            <span className="font-bold text-[#6b5e50]" suppressHydrationWarning>{new Date(d.startDate).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
-                          ) : <span className="text-[#d3cbbd]">開始日未設定</span>}
-                          <span className="text-[#b5a695] font-bold">→</span>
-                          {!dashLoading && (d?.endDate ? (
-                            <span className={`font-bold ${isOverdue ? 'text-[#c96262]' : 'text-[#6b5e50]'}`}>
-                              <span suppressHydrationWarning>{new Date(d.endDate).toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
-                              {isOverdue && <span className="ml-1.5 text-[10px] bg-[#fceded] text-[#c96262] px-1.5 py-0.5 rounded-full border border-[#e6b1b1]">已逾期</span>}
-                            </span>
-                          ) : <span className="text-[#d3cbbd]">結束日未設定</span>)}
-                        </div>
-
-                        {/* 進度條 */}
-                        <div>
-                          <div className="flex justify-between text-xs mb-1.5">
-                            <span className="text-[#8a7f72] font-bold">任務完成率</span>
-                            <span className="font-bold text-[#5b755e]">{dashLoading ? '—' : total > 0 ? `${rate}%` : '尚無任務'}</span>
-                          </div>
-                          <div className="w-full h-3.5 rounded-full bg-[#e8e4d9] overflow-hidden flex border border-[#d3cbbd]">
-                            {dashLoading ? (
-                              <div className="w-full h-full bg-[#e0dbd3] animate-pulse" />
-                            ) : (
-                              <>
-                                {dn > 0 && <div style={{ width: `${rate}%` }} className="bg-[#8fb996] h-full transition-all duration-700" />}
-                                {dg > 0 && <div style={{ width: `${dgRate}%` }} className="bg-[#d4a373] h-full transition-all duration-700" />}
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* 統計數字 */}
-                        <div className="flex justify-between items-center border-t border-[#f0ebe4] pt-3">
-                          <div className="flex gap-5">
-                            <div className="text-center">
-                              <div className={`text-2xl font-bold leading-none ${dn > 0 ? 'text-[#4a7c59]' : 'text-[#d3cbbd]'}`}>{dashLoading ? '—' : dn}</div>
-                              <div className="text-[10px] text-[#8a7f72] font-bold mt-1">✅ 完成</div>
-                            </div>
-                            <div className="text-center">
-                              <div className={`text-2xl font-bold leading-none ${dg > 0 ? 'text-[#d4a373]' : 'text-[#d3cbbd]'}`}>{dashLoading ? '—' : dg}</div>
-                              <div className="text-[10px] text-[#8a7f72] font-bold mt-1">⚡ 進行中</div>
-                            </div>
-                            <div className="text-center">
-                              <div className={`text-2xl font-bold leading-none ${td > 0 ? 'text-[#c96262]' : 'text-[#d3cbbd]'}`}>{dashLoading ? '—' : td}</div>
-                              <div className="text-[10px] text-[#8a7f72] font-bold mt-1">📋 待處理</div>
-                            </div>
-                          </div>
-                          <div className="text-center border-l border-[#e8d5b5] pl-5">
-                            <div className={`text-2xl font-bold leading-none ${pbiAcc > 0 ? 'text-[#9b596f]' : 'text-[#d3cbbd]'}`}>{dashLoading ? '—' : `${pbiAcc}/${pbiTotal}`}</div>
-                            <div className="text-[10px] text-[#8a7f72] font-bold mt-1">🍄 PBI 驗收</div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
             </section>
           );
@@ -744,103 +1345,305 @@ export default function SprintList() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {sprints.map(sprint => {
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[...ownedSprints, ...sharedSprints].map((sprint, sortIndex) => {
               const isEditing = editingId === sprint.id;
               const isCurrent = typeof window !== 'undefined' && localStorage.getItem('currentSprintId') === sprint.id;
+              const isSharedToMe = !!(user && sprint.ownerId && sprint.ownerId !== user.uid);
+              const showOwnedHeader = !isSharedToMe && sortIndex === 0 && sharedSprints.length > 0;
+              const showSharedHeader = isSharedToMe && sortIndex === ownedSprints.length;
 
               return (
-                <div 
-                  key={sprint.id} 
-                  className={`bg-[#fffdf9] border-4 rounded-3xl p-6 shadow-lg transition-all group relative
-                    ${isCurrent ? 'border-[#e07a5f] ring-4 ring-[#e07a5f]/20' : 'border-[#8fb996] hover:-translate-y-1 hover:shadow-xl'}
+                <React.Fragment key={sprint.id}>
+                {showOwnedHeader && (
+                  <div className="col-span-full flex items-center gap-3 mb-1">
+                    <div className="h-px flex-1 bg-[#a5c2a8]" />
+                    <span className="text-sm font-bold text-[#5b755e] flex items-center gap-1.5 bg-[#e8eedd] px-3 py-1 rounded-full">🗂 我的 Sprint</span>
+                    <div className="h-px flex-1 bg-[#a5c2a8]" />
+                  </div>
+                )}
+                {showSharedHeader && (
+                  <div className="col-span-full flex items-center gap-3 my-2">
+                    <div className="h-px flex-1 bg-[#b8d4ea]" />
+                    <span className="text-sm font-bold text-[#4a7c9b] flex items-center gap-1.5 bg-[#dceef8] px-3 py-1 rounded-full">🤝 共享給我的 Sprint</span>
+                    <div className="h-px flex-1 bg-[#b8d4ea]" />
+                  </div>
+                )}
+                <div
+                  className={`relative group overflow-hidden rounded-2xl border transition-all
+                    ${selectedSprintIds.has(sprint.id) ? 'ring-2 ring-[#d4a373] ring-offset-1' : ''}
+                    ${isCurrent
+                      ? 'bg-[#fffdf9] border-[#e07a5f] shadow-md ring-2 ring-[#e07a5f]/15'
+                      : isSharedToMe
+                        ? 'bg-[#f0f7ff] border-[#b8d4ea] hover:border-[#6b9ec4] hover:shadow-md hover:-translate-y-0.5'
+                        : 'bg-[#fffdf9] border-[#ddd6cc] hover:border-[#8fb996] hover:shadow-md hover:-translate-y-0.5'}
                   `}
                 >
-                  {isCurrent && (
-                    <div className="absolute -top-3 -right-3 bg-[#e07a5f] text-white text-xs font-bold px-3 py-1 rounded-full shadow-md border-2 border-[#8a4231]">
-                      當前開啟
-                    </div>
-                  )}
-                  
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="text-xs font-bold text-[#b5a695] bg-[#f4f1ea] px-2 py-1 rounded" suppressHydrationWarning>
-                      {new Date(sprint.createdAt).toLocaleDateString()} 建立
-                    </div>
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setShareModalSprint(sprint); }} 
-                        className="text-[#8b5a2b] hover:bg-[#faebce] p-1.5 rounded transition-colors"
-                        title="共享設定"
-                      >
-                        👥
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setEditingId(isEditing ? null : sprint.id); }} 
-                        className="text-[#76a5af] hover:bg-[#e8eedd] p-1.5 rounded transition-colors"
-                        title="編輯名稱"
-                      >
-                        ✏️
-                      </button>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); deleteSprint(sprint.id); }} 
-                        className="text-[#c96262] hover:bg-[#fceded] p-1.5 rounded transition-colors"
-                        title="刪除"
-                      >
-                        🗑️
-                      </button>
+                  {/* 工作日誌勾選框 */}
+                  <div className="absolute top-2.5 left-2.5 z-20" onClick={e => toggleSprintSelect(sprint.id, e)}>
+                    <div className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${
+                      selectedSprintIds.has(sprint.id)
+                        ? 'bg-[#d4a373] border-[#b08040] text-white'
+                        : 'bg-white border-[#d3cbbd] hover:border-[#d4a373]'
+                    }`}>
+                      {selectedSprintIds.has(sprint.id) && <span className="text-[10px] font-bold">✓</span>}
                     </div>
                   </div>
+                  {/* 左側色條 */}
+                  <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${isCurrent ? 'bg-[#e07a5f]' : isSharedToMe ? 'bg-[#6b9ec4]' : 'bg-[#8fb996]'}`} />
 
-                  <div className="min-h-[80px] mb-4">
-                    {isEditing ? (
-                      <div className="space-y-2">
-                        <input 
-                          type="text" 
-                          value={sprint.name} 
+                  <div className="pl-9 pr-4 pt-4 pb-4 flex flex-col h-full">
+                    {/* 頂部：日期 + 狀態徽章 + 操作按鈕 */}
+                    {(() => {
+                      const status = getSortStatus(sprint);
+                      const statusCfg: Record<string, { label: string; cls: string }> = {
+                        'in-progress': { label: '進行中', cls: 'bg-[#fff0e0] text-[#c07020] border border-[#f0c080]' },
+                        'completed':   { label: '已完成', cls: 'bg-[#e8f4ea] text-[#3a7a4a] border border-[#9acea8]' },
+                        'pending':     { label: '待開始', cls: 'bg-[#f4f1ea] text-[#9a9080] border border-[#d8d0c0]' },
+                      };
+                      const sc = statusCfg[status] ?? statusCfg['pending'];
+                      return (
+                        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[11px] text-[#b5a695] font-medium leading-none shrink-0" suppressHydrationWarning>
+                              {new Date(sprint.createdAt).toLocaleDateString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric' })}
+                            </span>
+                            {!dashLoading && (
+                              <div onClick={e => e.stopPropagation()}>
+                                <select
+                                  value={status}
+                                  onChange={e => { e.stopPropagation(); updateSprintStatus(sprint.id, e.target.value as Sprint['sprintStatus']); }}
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border-0 cursor-pointer outline-none shrink-0 ${sc.cls}`}
+                                >
+                                  <option value="pending">📋 待開始</option>
+                                  <option value="in-progress">⚡ 進行中</option>
+                                  <option value="completed">✅ 已完成</option>
+                                </select>
+                              </div>
+                            )}
+                            {isCurrent && <span className="text-[10px] font-bold text-[#e07a5f] bg-[#fde8e2] px-2 py-0.5 rounded-full border border-[#f0c0b0] shrink-0">當前</span>}
+                            {isSharedToMe && <span className="text-[10px] font-bold text-[#4a7c9b] bg-[#dceef8] px-2 py-0.5 rounded-full border border-[#a8d0e8] shrink-0">🤝 共享</span>}
+                            {!isSharedToMe && (sprint.collaborators?.length ?? 0) > 0 && (
+                              <span className="text-[10px] font-bold text-[#8b5a2b] bg-[#faebce] px-2 py-0.5 rounded-full border border-[#e8c888] shrink-0">👥 {sprint.collaborators!.length}人</span>
+                            )}
+                          </div>
+                          {/* 操作按鈕（hover 才顯示） */}
+                          <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                            {!isSharedToMe && (
+                              <button onClick={(e) => { e.stopPropagation(); setShareModalSprint(sprint); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-[#a09080] hover:bg-[#faebce] hover:text-[#8b5a2b] transition-colors text-sm" title="共享設定">👥</button>
+                            )}
+                            {!isSharedToMe && (
+                              <button onClick={(e) => { e.stopPropagation(); copySprint(sprint.id); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-[#a09080] hover:bg-[#e8f0e8] hover:text-[#4a7c59] transition-colors text-sm" title="複製 Sprint">⎘</button>
+                            )}
+                            <button onClick={(e) => { e.stopPropagation(); setEditingId(isEditing ? null : sprint.id); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-[#a09080] hover:bg-[#e8eedd] hover:text-[#5b755e] transition-colors text-sm" title="編輯名稱">✎</button>
+                            {!isSharedToMe && (
+                              <button onClick={(e) => { e.stopPropagation(); deleteSprint(sprint.id); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-[#a09080] hover:bg-[#fceded] hover:text-[#c96262] transition-colors text-sm" title="刪除">✕</button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Sprint 名稱（min-h 鎖住兩行高度，避免 h2↔input 切換時版面跳動） */}
+                    <div className="mb-3 min-h-[44px] flex items-start">
+                      {isEditing ? (
+                        <input
+                          type="text"
+                          value={sprint.name}
                           onChange={(e) => updateSprintName(sprint.id, e.target.value)}
-                          className="w-full px-3 py-2 border-2 border-[#b5a695] rounded-lg focus:outline-none focus:border-[#5b755e] text-[#3e362e] font-bold"
+                          onBlur={() => setEditingId(null)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); setEditingId(null); } }}
                           autoFocus
+                          className="w-full px-0 border-b-2 border-[#5b755e] focus:outline-none text-[#3e362e] font-bold text-[15px] leading-snug bg-transparent"
                         />
-                        <button 
-                          onClick={() => setEditingId(null)}
-                          className="bg-[#8fb996] text-white text-xs font-bold px-4 py-2 rounded hover:bg-[#5b755e] transition-colors w-full"
+                      ) : (
+                        <h2 className="font-bold text-[#3e362e] text-[15px] leading-snug line-clamp-2 w-full">{sprint.name}</h2>
+                      )}
+                    </div>
+
+                    {/* Sprint Goal */}
+                    {!isEditing && dashboards[sprint.id]?.sprintGoal && (
+                      <p className="text-[11px] text-[#8a7f72] line-clamp-2 mb-3 leading-relaxed bg-[#f9f6f0] px-2.5 py-1.5 rounded-lg border-l-2 border-[#c8b89a]">
+                        {dashboards[sprint.id].sprintGoal}
+                      </p>
+                    )}
+
+                    {/* 進度條 + 任務統計 */}
+                    {!isEditing && (
+                      <div className="mb-3 flex-1">
+                        {dashLoading ? (
+                          <div className="space-y-1.5">
+                            <div className="h-1.5 bg-[#f0ebe4] rounded-full animate-pulse w-full" />
+                            <div className="h-1.5 bg-[#f0ebe4] rounded-full animate-pulse w-2/3" />
+                          </div>
+                        ) : dashboards[sprint.id] && dashboards[sprint.id].totalTasks > 0 ? (
+                          <>
+                            {/* 進度條 */}
+                            <div className="mb-2">
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-[10px] text-[#b5a695]">任務完成率</span>
+                                <span className="text-[10px] font-bold text-[#5b755e]">
+                                  {Math.round(dashboards[sprint.id].done / dashboards[sprint.id].totalTasks * 100)}%
+                                </span>
+                              </div>
+                              <div className="h-2 bg-[#f0ebe4] rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transition-all duration-700"
+                                  style={{ width: `${Math.round(dashboards[sprint.id].done / dashboards[sprint.id].totalTasks * 100)}%`, background: getSortStatus(sprint) === 'completed' ? '#5b755e' : '#8fb996' }}
+                                />
+                              </div>
+                            </div>
+                            {/* 任務數量 */}
+                            <div className="flex items-center gap-3 text-[11px]">
+                              <span className="flex items-center gap-1 font-bold text-[#5b755e]" title="已完成">✓ {dashboards[sprint.id].done}</span>
+                              <span className="flex items-center gap-1 font-bold text-[#e07a5f]" title="進行中">▶ {dashboards[sprint.id].doing}</span>
+                              <span className="flex items-center gap-1 text-[#b5a695]" title="待處理">○ {dashboards[sprint.id].todo}</span>
+                              {dashboards[sprint.id].pbiTotal > 0 && (
+                                <span className="ml-auto text-[10px] text-[#8a7f72] bg-[#f4f0e8] px-2 py-0.5 rounded-full border border-[#e0d8cc]">
+                                  PBI {dashboards[sprint.id].pbiAccepted}/{dashboards[sprint.id].pbiTotal}
+                                </span>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-[11px] text-[#d3cbbd] italic py-1">尚無任務資料</div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 底部：日期範圍 + 進入按鈕 */}
+                    {!isEditing && (
+                      <div className="border-t border-[#f0ebe4] pt-3 flex items-center justify-between gap-2 mt-auto">
+                        <div className="text-[10px] text-[#c0b8ac] leading-tight">
+                          {dashboards[sprint.id]?.startDate ? (
+                            <span>📅 {dashboards[sprint.id].startDate}{dashboards[sprint.id].endDate ? ` → ${dashboards[sprint.id].endDate}` : ''}</span>
+                          ) : null}
+                        </div>
+                        <button
+                          onClick={() => selectSprint(sprint.id, sprint.name)}
+                          className={`flex items-center gap-1.5 text-[13px] font-bold px-4 py-1.5 rounded-lg transition-all shrink-0
+                            ${isCurrent
+                              ? 'bg-[#e07a5f] text-white hover:bg-[#c66147] shadow-sm'
+                              : 'bg-[#eef6ef] text-[#5b755e] hover:bg-[#d4edda] border border-[#c0dcc4]'}
+                          `}
                         >
-                          儲存名稱
+                          {isCurrent ? '繼續編輯' : '進入'}
+                          <span className="text-[11px]">→</span>
                         </button>
                       </div>
-                    ) : (
-                      <h2 className="text-xl font-bold text-[#3e362e] leading-snug line-clamp-3">
-                        {sprint.name}
-                      </h2>
                     )}
                   </div>
-
-                  {!isEditing && (
-                    <button 
-                      onClick={() => selectSprint(sprint.id, sprint.name)}
-                      className={`w-full py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2 border-2
-                        ${isCurrent 
-                          ? 'bg-[#e07a5f] text-white border-[#8a4231] hover:bg-[#c66147]' 
-                          : 'bg-[#e8eedd] text-[#5b755e] border-[#8fb996] hover:bg-[#dcedc1]'
-                        }
-                      `}
-                    >
-                      <span>{isCurrent ? '繼續編輯此 Sprint' : '進入此 Sprint'}</span>
-                      <span>→</span>
-                    </button>
-                  )}
                 </div>
+                </React.Fragment>
               );
             })}
-            
+
             {sprints.length === 0 && (
-              <div className="col-span-1 md:col-span-2 text-center py-12 text-[#b5a695] font-bold text-lg bg-[#fffdf9] border-4 border-dashed border-[#b5a695] rounded-3xl">
+              <div className="col-span-full text-center py-12 text-[#b5a695] font-bold text-lg bg-[#fffdf9] border-2 border-dashed border-[#d3cbbd] rounded-2xl">
                 🪹 目前還沒有任何 Sprint，點擊右上角建立一個吧！
               </div>
             )}
           </div>
         )}
       
+        {/* 工作日誌匯出 Modal */}
+        {showJournalModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowJournalModal(false)}>
+            <div className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              {/* 標題列 */}
+              <div className="bg-[#5b755e] text-white px-6 py-4 rounded-t-2xl flex items-center justify-between gap-3 flex-shrink-0 flex-wrap">
+                <div>
+                  <h2 className="font-bold text-lg">📋 工作日誌</h2>
+                  <div className="text-sm text-white/70 mt-0.5">已選 {selectedSprintIds.size} 個 Sprint</div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* 日報 / 週報 切換 */}
+                  <div className="flex rounded-xl overflow-hidden border-2 border-white/30">
+                    <button
+                      onClick={() => setJournalType('daily')}
+                      className={`px-3 py-1.5 text-sm font-bold transition-colors ${journalType === 'daily' ? 'bg-white text-[#5b755e]' : 'text-white/80 hover:text-white hover:bg-white/10'}`}
+                    >日報</button>
+                    <button
+                      onClick={() => setJournalType('weekly')}
+                      className={`px-3 py-1.5 text-sm font-bold transition-colors border-l border-white/30 ${journalType === 'weekly' ? 'bg-white text-[#5b755e]' : 'text-white/80 hover:text-white hover:bg-white/10'}`}
+                    >週報</button>
+                  </div>
+                  {/* 日期選擇器 */}
+                  {!journalLoading && journalType === 'daily' && (
+                    <input
+                      type="date"
+                      value={journalDate}
+                      onChange={e => setJournalDate(e.target.value)}
+                      className="px-2 py-1 rounded-lg text-sm text-[#3e362e] font-medium bg-white border-0 focus:outline-none focus:ring-2 focus:ring-white/60"
+                    />
+                  )}
+                  {!journalLoading && journalType === 'weekly' && (
+                    <div className="flex items-center gap-1 text-sm text-white/80">
+                      <input
+                        type="date"
+                        value={journalRangeFrom}
+                        onChange={e => setJournalRangeFrom(e.target.value)}
+                        className="px-2 py-1 rounded-lg text-sm text-[#3e362e] font-medium bg-white border-0 focus:outline-none focus:ring-2 focus:ring-white/60"
+                      />
+                      <span className="flex-shrink-0">—</span>
+                      <input
+                        type="date"
+                        value={journalRangeTo}
+                        onChange={e => setJournalRangeTo(e.target.value)}
+                        className="px-2 py-1 rounded-lg text-sm text-[#3e362e] font-medium bg-white border-0 focus:outline-none focus:ring-2 focus:ring-white/60"
+                      />
+                    </div>
+                  )}
+                  {!journalLoading && (
+                    <button
+                      onClick={() => {
+                        const text = journalType === 'daily' ? journalDailyText : journalWeeklyText;
+                        navigator.clipboard.writeText(text).then(() => {
+                          setJournalCopied(true);
+                          setTimeout(() => setJournalCopied(false), 2500);
+                        });
+                      }}
+                      className={`px-4 py-1.5 rounded-xl font-bold text-sm transition-all ${
+                        journalCopied ? 'bg-[#8fb996] text-white' : 'bg-white text-[#5b755e] hover:bg-[#f0f4ec]'
+                      }`}
+                    >
+                      {journalCopied ? '✅ 已複製！' : '📋 複製'}
+                    </button>
+                  )}
+                  {!journalLoading && lineRecipients.length > 0 && (
+                    <button
+                      onClick={sendLineJournal}
+                      disabled={lineSending}
+                      className={`px-4 py-1.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${
+                        lineSent ? 'bg-[#76a5af] text-white' : 'bg-white text-[#5b755e] hover:bg-[#f0f4ec]'
+                      }`}
+                    >
+                      {lineSending ? '傳送中...' : lineSent ? '✅ 已傳送！' : '📱 傳 LINE'}
+                    </button>
+                  )}
+                  <button onClick={() => setShowJournalModal(false)} className="text-white/70 hover:text-white text-xl font-bold leading-none ml-1">✕</button>
+                </div>
+              </div>
+              {/* 內容 */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {journalLoading ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-4 text-[#8a7f72]">
+                    <div className="text-4xl animate-spin">⏳</div>
+                    <div className="font-bold">讀取中，請稍候...</div>
+                  </div>
+                ) : (
+                  <pre className="text-xs text-[#3e362e] font-mono whitespace-pre-wrap leading-relaxed bg-[#f9f7f4] border border-[#e8d5b5] rounded-2xl p-4 select-all">
+                    {journalType === 'daily' ? journalDailyText : journalWeeklyText}
+                  </pre>
+                )}
+              </div>
+              <div className="px-4 pb-4 flex-shrink-0 text-center text-xs text-[#b5a695]">
+                點擊文字區域可全選，或使用上方「複製」
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Share Modal */}
         {shareModalSprint && (
           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
@@ -895,6 +1698,9 @@ export default function SprintList() {
                
                <div className="space-y-3">
                  <h3 className="font-bold text-sm text-[#3e362e]">新增協作者 (Google Email)</h3>
+                 <p className="text-[10px] text-[#8a7f72] bg-[#f9f6f2] border border-[#e8d5b5] rounded-lg px-3 py-2 leading-relaxed">
+                   💡 輸入對方的 Google Email 後點擊「邀請加入」。對方以該 Google 帳號登入後，即可在主頁看到共享的 Sprint。
+                 </p>
                  <div className="flex gap-2">
                    <input 
                      type="email" 

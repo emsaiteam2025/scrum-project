@@ -141,9 +141,10 @@ export default function Backlog() {
             const whatIds = whats.map((w: {id: string, text: string}) => w.id);
             const planningIds = new Set(whatIds);
             newPbis = newPbis.filter(t =>
-              planningIds.has(t.id) ||       // 仍在 Planning 清單中
+              !deletedPbiIds.current.has(t.id) &&  // 已手動刪除的 PBI 強制排除（防止 onSnapshot 還原後被保留）
+              (planningIds.has(t.id) ||       // 仍在 Planning 清單中
               t.id.startsWith('photo-') ||   // 照片還原的 PBI
-              t.id.startsWith('pbi-')        // 手動新增的 PBI
+              t.id.startsWith('pbi-'))        // 手動新增的 PBI
             );
 
             // 將同步好的 PBI 與原本的 Tasks 合併
@@ -192,6 +193,18 @@ export default function Backlog() {
     } catch {}
   }, []);
 
+  // 防止 onSnapshot/board 競態條件把已刪除 PBI 寫回 Firestore：
+  // 每當 tasks 變動，若發現已刪除的 PBI 存在於狀態中，立即移除並觸發存檔
+  useEffect(() => {
+    if (loading) return;
+    if (deletedPbiIds.current.size === 0) return;
+    const hasRestored = tasks.some(t => t.type === 'pbi' && deletedPbiIds.current.has(t.id));
+    if (hasRestored) {
+      setTasks((prev: Task[]) => prev.filter(t => !(t.type === 'pbi' && deletedPbiIds.current.has(t.id))));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, loading]);
+
   // 從 Firebase 讀取 Planning 的 PO 名字作為驗收官
   useEffect(() => {
     const sprintId = localStorage.getItem('currentSprintId');
@@ -214,6 +227,15 @@ export default function Backlog() {
     setTasks(prev => prev.map(t =>
       t.id === id ? { ...t, acceptedBy: poName || 'PO', acceptedAt: now } : t
     ));
+    // 驗收是關鍵操作，不等 debounce，立即強制存檔
+    setTimeout(() => forceSave && forceSave(), 100);
+  };
+
+  const cancelAcceptPbi = (id: string) => {
+    setTasks(prev => prev.map(t =>
+      t.id === id ? { ...t, acceptedBy: undefined, acceptedAt: undefined } : t
+    ));
+    setTimeout(() => forceSave && forceSave(), 100);
   };
 
   const handleAiGenerateTasks = async (pbiId: string, pbiTitle: string) => {
@@ -690,7 +712,7 @@ export default function Backlog() {
 
   return (
     <main className="min-h-screen bg-[#f4f1ea] p-4 md:p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
-      <div className="max-w-[1400px] mx-auto space-y-8">
+      <div className="w-full space-y-8">
 
         <div className="flex flex-col items-center">
           <Navigation />
@@ -741,8 +763,10 @@ export default function Backlog() {
 
         {/* 完成進度 */}
         {(() => {
-          const allTasks = tasks.filter(t => t.type === 'task');
           const pbis = tasks.filter(t => t.status === 'pbi');
+          const pbiIdSet = new Set(pbis.map(t => t.id));
+          // 只計算屬於現有 PBI 的任務，排除孤兒任務（pbiId 不存在的）
+          const allTasks = tasks.filter(t => t.type === 'task' && t.pbiId && pbiIdSet.has(t.pbiId));
           if (allTasks.length === 0 && pbis.length === 0) return null;
           const todo = allTasks.filter(t => t.status === 'todo').length;
           const doing = allTasks.filter(t => t.status === 'doing').length;
@@ -1017,7 +1041,7 @@ export default function Backlog() {
                   {pbi.acceptedBy ? (
                     <div className="bg-[#fff0f5] border-t-2 border-[#d4a373] p-2 flex items-center justify-between">
                       <div className="text-xs font-bold text-[#9b596f]">✅ 已驗收：{pbi.acceptedBy}（{pbi.acceptedAt}）</div>
-                      <button onClick={()=>setTasks(prev=>prev.map(t=>t.id===pbi.id?{...t,acceptedBy:undefined,acceptedAt:undefined}:t))} className="text-[10px] text-[#9b596f] underline ml-2">取消驗收</button>
+                      <button onClick={()=>cancelAcceptPbi(pbi.id)} className="text-[10px] text-[#9b596f] underline ml-2">取消驗收</button>
                     </div>
                   ) : poName ? (
                     <div className="border-t-2 border-[#d4a373] p-2">
@@ -1263,7 +1287,7 @@ export default function Backlog() {
                            <div className="font-bold text-[#3e362e] text-sm">{pbi.acceptedBy}</div>
                            <div className="text-xs text-[#8a7f72]">{pbi.acceptedAt}</div>
                            <button
-                             onClick={() => setTasks(prev => prev.map(t => t.id === pbi.id ? { ...t, acceptedBy: undefined, acceptedAt: undefined } : t))}
+                             onClick={() => cancelAcceptPbi(pbi.id)}
                              className="text-[10px] text-[#9b596f] underline hover:text-[#7a3f55] mt-1"
                            >
                              取消驗收
@@ -1287,39 +1311,6 @@ export default function Backlog() {
                   );
                })}
                
-               {/* Unassigned Tasks Row (如果有的話) */}
-               <div className="flex min-h-[250px] bg-white/30 items-stretch">
-                     {/* PBI Cell (Empty for Unassigned) */}
-                     <div className="w-64 md:w-72 flex-shrink-0 p-4 border-r-4 border-[#5b755e] bg-[#fffdf9] sticky left-0 z-10 shadow-[4px_0_15px_-3px_rgba(0,0,0,0.1)] flex flex-col">
-                         <div className="flex items-center justify-center h-full text-[#b5a695]/50 text-xs font-bold border-2 border-dashed border-[#b5a695]/30 rounded-xl m-2 flex-1">
-                             <span>無歸屬任務區</span>
-                         </div>
-                     </div>
-
-                     <div className="flex-1 p-2 border-r-4 border-[#5b755e] bg-[#fceded]/30 min-w-[200px]" onDragOver={onDragOver} onDrop={(e) => onDrop(e, 'todo', undefined, 'unassigned')}>
-                       <div className="text-xs font-bold text-[#c96262]/50 mb-2 px-2">無歸屬任務區</div>
-                       <div className="flex flex-col gap-2 h-full">
-                         {renderTasks('todo', 'unassigned')}
-                       </div>
-                     </div>
-                     
-                     <div className="flex-1 p-2 border-r-4 border-[#5b755e] bg-[#faebce]/30 min-w-[200px]" onDragOver={onDragOver} onDrop={(e) => onDrop(e, 'doing', undefined, 'unassigned')}>
-                       <div className="text-xs font-bold text-[#d4a373]/50 mb-2 px-2">無歸屬任務區</div>
-                       <div className="flex flex-col gap-2 h-full">
-                         {renderTasks('doing', 'unassigned')}
-                       </div>
-                     </div>
-                     
-                     <div className="flex-1 p-2 border-r-4 border-[#5b755e] bg-[#e8eedd]/30 min-w-[200px]" onDragOver={onDragOver} onDrop={(e) => onDrop(e, 'done', undefined, 'unassigned')}>
-                       <div className="text-xs font-bold text-[#4a7c59]/50 mb-2 px-2">無歸屬任務區</div>
-                       <div className="flex flex-col gap-2 h-full">
-                         {renderTasks('done', 'unassigned')}
-                       </div>
-                     </div>
-                     
-                     <div className="flex-1 p-2 bg-[#eac4d0]/30 flex items-center justify-center min-w-[200px]">
-                     </div>
-               </div>
              </div>
           </div>
         </section>

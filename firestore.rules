@@ -1,0 +1,57 @@
+rules_version = '2';
+
+// ---------------------------------------------------------------------------
+// Firestore 安全規則 — Scrum Project
+//
+// 部署方式（請任選其一）：
+//
+// (A) Firebase Console（最簡單）：
+//     1. 進入 Firebase Console → Firestore Database → Rules 分頁
+//     2. 將下方內容整段貼上覆蓋舊規則
+//     3. 點 "Publish"
+//
+// (B) Firebase CLI：
+//     1. npm install -g firebase-tools （若尚未安裝）
+//     2. firebase login
+//     3. firebase init firestore （初次設定時選此檔）
+//     4. firebase deploy --only firestore:rules
+//
+// 設計重點：
+//   - read（取得專案內容）→ 任何人皆可（包含未登入訪客），這是分享連結
+//     能讓未登入的人檢視專案的關鍵。
+//   - create（新增專案）→ 必須登入，且 ownerId 必須等於自己。
+//   - update / delete → 必須登入，且必須是擁有者或被加入的協作者。
+//
+// 若您不希望「任何人都能讀」，可把 read 規則改為：
+//   allow read: if request.auth != null
+//             || resource == null
+//             || resource.data.ownerId != null;
+// （但這樣就無法做「未登入訪客憑連結檢視」的功能）
+// ---------------------------------------------------------------------------
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /sprints/{sprintId} {
+
+      // 任何人皆可讀取 — 這是「擁有連結即可檢視」的關鍵
+      allow read: if true;
+
+      // 新增：必須登入，且 ownerId 必須是自己
+      allow create: if request.auth != null
+                    && request.resource.data.ownerId == request.auth.uid;
+
+      // 修改、刪除：必須是擁有者，或是被加入的協作者（以 email 比對）
+      allow update, delete: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid
+        || (resource.data.collaboratorEmails is list
+            && request.auth.token.email in resource.data.collaboratorEmails)
+      );
+    }
+
+    // 其他 collection 預設拒絕
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

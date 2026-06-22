@@ -1,33 +1,91 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { db } from '@/lib/firebase';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, updateDoc, arrayUnion } from 'firebase/firestore';
 import { useAuth } from '@/components/AuthProvider';
+
+const FIELD_LABELS: Record<string, Record<string, string>> = {
+  planning: { sprintName: '專案名稱', goal: 'Sprint Goal', duration: '時間限制', startDate: '開始日期', po: 'PO', sm: 'SM', devs: '開發團隊', stakeholders: '利害關係人', pbis: 'PBI 清單' },
+  backlog: { tasks: 'Backlog 任務' },
+  'daily-scrum': { tasks: '任務清單', impediments: '阻礙事項' },
+  review: { opening: '開場總結', demo: '成果演示', market: '市場討論', future: '展望未來' },
+  retrospective: { previousActions: '上次行動', keepStart: 'Keep/Start', problemStop: 'Problem/Stop', actionItems: 'Action Items', actionTracker: '追蹤人' },
+};
+
+function trunc(s: string, n = 14) { return s.length > n ? s.slice(0, n) + '…' : s; }
+
+function generateChangeDiff(
+  pageKey: string,
+  oldData: Record<string, unknown>,
+  newData: Record<string, unknown>,
+  changedKeys: string[]
+): string {
+  const labels = FIELD_LABELS[pageKey] || {};
+  return changedKeys.map(key => {
+    const label = labels[key] || key;
+    const oldVal = oldData[key];
+    const newVal = newData[key];
+    if (Array.isArray(newVal)) {
+      const oldLen = Array.isArray(oldVal) ? oldVal.length : 0;
+      const newLen = newVal.length;
+      if (newLen > oldLen) return `${label}：新增 ${newLen - oldLen} 筆`;
+      if (newLen < oldLen) return `${label}：刪除 ${oldLen - newLen} 筆`;
+      return `${label}：修改內容`;
+    }
+    const o = trunc(String(oldVal ?? ''));
+    const n = trunc(String(newVal ?? ''));
+    if (!o && n) return `${label}：${n}`;
+    if (o && !n) return `${label}：已清除`;
+    return `${label}：「${o}」→「${n}」`;
+  }).filter(Boolean).join('\n');
+}
 
 export type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error';
 
 export function useAutoSave<T>(pageKey: string, initialData: T) {
+  const searchParams = useSearchParams();
+  const urlSprintIdParam = searchParams.get('sprint');
+
   const { user, loading: authLoading } = useAuth();
   const [data, setData] = useState<T>(initialData);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
 
   const isDirty = useRef(false);
-  const saveGeneration = useRef(0); // 每次用戶編輯時遞增，用來偵測儲存期間是否有新編輯
+  const saveGeneration = useRef(0);
   const dataRef = useRef<T>(initialData);
   const userRef = useRef(user);
   const sprintIdRef = useRef<string | null>(null);
+  const lastSavedDataRef = useRef<T | null>(null);
+  const initialDataRef = useRef<T>(initialData);
 
   const [sprintId, setSprintId] = useState<string | null>(null);
 
+  // 動態偵測 sprint 切換（含 Next.js App Router 同路由換 params 的情況）
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const id = localStorage.getItem('currentSprintId');
-      setSprintId(id);
-      sprintIdRef.current = id;
+    if (typeof window === 'undefined') return;
+    const newId = urlSprintIdParam || localStorage.getItem('currentSprintId');
+    if (urlSprintIdParam) localStorage.setItem('currentSprintId', urlSprintIdParam);
+
+    if (newId === sprintIdRef.current) return; // 未變更，不處理
+
+    // Sprint 切換：重置所有狀態，防止舊 sprint 資料污染新 sprint
+    const prevId = sprintIdRef.current;
+    sprintIdRef.current = newId;
+    setSprintId(newId);
+
+    if (prevId !== null) {
+      // 非首次載入才重置（首次 mount 不需要 flash 空資料）
+      isDirty.current = false;
+      saveGeneration.current++;
+      lastSavedDataRef.current = null;
+      setData(initialDataRef.current);
+      setLoading(true);
+      setSaveStatus('idle');
     }
-  }, []);
+  }, [urlSprintIdParam]);
 
   useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => { userRef.current = user; }, [user]);
@@ -84,7 +142,9 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
         }
       } catch {}
 
-      setData({ ...initialData, ...(mainData ?? {}), ...(draftData ?? {}) } as T);
+      const merged = { ...initialData, ...(mainData ?? {}), ...(draftData ?? {}) } as T;
+      setData(merged);
+      lastSavedDataRef.current = { ...initialData, ...(mainData ?? {}) } as T;
       if (draftData) {
         isDirty.current = true;
         saveGeneration.current++;
@@ -103,8 +163,9 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
     const currentUser = userRef.current;
     if (!sid) return;
 
-    const isPublicViewer = localStorage.getItem('sprintRole_' + sid) === 'viewer_via_link';
-    if (isPublicViewer && !currentUser) return;
+    // viewer_via_link 只對未登入的公開訪客有效；已登入的使用者由 Navigation 非同步校正角色
+    const isPublicViewer = !currentUser && localStorage.getItem('sprintRole_' + sid) === 'viewer_via_link';
+    if (isPublicViewer) return;
 
     setSaveStatus('saving');
     // 記錄儲存開始時的編輯世代，用來判斷儲存期間是否有新的用戶編輯
@@ -125,6 +186,19 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
           }
           setSaveStatus('saved');
           console.log(`[AutoSave] 雲端儲存成功: ${pageKey}`);
+          // 記錄編輯歷史：有實際變更才記錄，無冷卻限制
+          const prev = lastSavedDataRef.current as Record<string, unknown> | null;
+          const curr = currentData as Record<string, unknown>;
+          const changedKeys = prev
+            ? Object.keys(curr).filter(k => JSON.stringify(prev[k]) !== JSON.stringify(curr[k]))
+            : Object.keys(curr).filter(k => { const v = curr[k]; return v !== '' && v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0); });
+          if (changedKeys.length > 0) {
+            const changes = generateChangeDiff(pageKey, prev ?? {}, curr, changedKeys);
+            updateDoc(doc(db, 'sprints', sid), {
+              editHistory: arrayUnion({ email: currentUser.email || '', name: currentUser.displayName || currentUser.email || '', ts: Date.now(), page: pageKey, changes })
+            }).catch(() => {});
+          }
+          lastSavedDataRef.current = JSON.parse(JSON.stringify(currentData));
           setTimeout(() => setSaveStatus('idle'), 2000);
           return;
         } catch (err) {
@@ -149,8 +223,8 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
   // 即時 localStorage 草稿備份（最後防線，每次 data 變動同步寫入）
   useEffect(() => {
     if (loading || !isDirty.current || !sprintId) return;
-    const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
-    if (isPublicViewer && !user) return;
+    const isPublicViewer = !user && localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
+    if (isPublicViewer) return;
     try {
       localStorage.setItem(`draft_sprint_${sprintId}_${pageKey}`, JSON.stringify(data));
     } catch {}
@@ -213,7 +287,7 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
       if (!isDirty.current || !sprintIdRef.current) return;
       const sid = sprintIdRef.current;
       const isPublicViewer = localStorage.getItem('sprintRole_' + sid) === 'viewer_via_link';
-      if (isPublicViewer && !userRef.current) return;
+      if (isPublicViewer) return;
       try {
         localStorage.setItem(`draft_sprint_${sid}_${pageKey}`, JSON.stringify(dataRef.current));
       } catch {}
@@ -241,8 +315,9 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
   const updateData = (updates: Partial<T> | ((prev: T) => Partial<T>)) => {
     if (sprintId) {
       const isPublicViewer = localStorage.getItem('sprintRole_' + sprintId) === 'viewer_via_link';
-      if (isPublicViewer && !user) {
-        alert('您目前為檢視者模式，無法編輯此專案！');
+      // 已登入的使用者不受 viewer_via_link 封鎖（Navigation 會非同步清除舊旗標，這裡先行判斷）
+      if (isPublicViewer && !userRef.current) {
+        alert('您目前為檢視模式，無法編輯此專案。如需編輯請聯絡擁有者將您加入協作者。');
         return;
       }
     }

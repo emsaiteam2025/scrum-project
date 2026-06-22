@@ -1,7 +1,8 @@
 "use client";
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { auth, googleProvider, signInWithPopup, signOut as firebaseSignOut } from '@/lib/firebase';
+import { auth, db, googleProvider, signInWithPopup, signOut as firebaseSignOut } from '@/lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
@@ -22,9 +23,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       setLoading(false);
+      if (currentUser?.email) {
+        try {
+          await setDoc(doc(db, 'users', currentUser.uid), {
+            email: currentUser.email,
+            displayName: currentUser.displayName || '',
+          }, { merge: true });
+        } catch {}
+      }
     });
     return () => unsubscribe();
   }, []);

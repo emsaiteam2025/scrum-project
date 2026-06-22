@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import Link from 'next/link';
 
@@ -72,13 +72,33 @@ export default function Home() {
     syncDevsString(list.length > 0 ? list : [{ id: Date.now().toString(), name: '', role: '' }]);
   };
 
-  // 元件載入時讀取 API Key 與 專案名稱
+  // 元件載入時讀取 API Key，並從 Firestore 取得最新專案名稱
   React.useEffect(() => {
     const savedKey = localStorage.getItem('openai_api_key');
     if (savedKey) setApiKey(savedKey);
 
-    const savedSprintName = localStorage.getItem('currentSprintName');
-    if (savedSprintName) setProjectName(savedSprintName);
+    const sprintId = localStorage.getItem('currentSprintId');
+    if (!sprintId) {
+      const savedSprintName = localStorage.getItem('currentSprintName');
+      if (savedSprintName) setProjectName(savedSprintName);
+      return;
+    }
+
+    (async () => {
+      try {
+        const { doc, getDoc } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+        const snap = await getDoc(doc(db, 'sprints', sprintId));
+        if (snap.exists() && snap.data().name) {
+          const name = snap.data().name as string;
+          setProjectName(name);
+          localStorage.setItem('currentSprintName', name);
+          return;
+        }
+      } catch {}
+      const savedSprintName = localStorage.getItem('currentSprintName');
+      if (savedSprintName) setProjectName(savedSprintName);
+    })();
   }, []);
 
   // Mirror: planning → sprintPlanning（scrum-project-new 用的 schema）
@@ -86,26 +106,12 @@ export default function Home() {
   // 優先從 Firestore users/{uid}.currentSprintId 取得 sprintId，解決不同 port localStorage 不同步問題
   React.useEffect(() => {
     if (loading) return;
-    const localSprintId = typeof window !== 'undefined' ? localStorage.getItem('currentSprintId') : null;
-    if (!localSprintId) return;
+    const sprintId = typeof window !== 'undefined' ? localStorage.getItem('currentSprintId') : null;
+    if (!sprintId) return;
     const timer = setTimeout(async () => {
       try {
-        const { doc, getDoc, setDoc, getAuth } = await import('firebase/firestore').then(async (fs) => {
-          const auth = await import('firebase/auth');
-          return { ...fs, getAuth: auth.getAuth };
-        });
-        const { db, app } = await import('@/lib/firebase');
-        const auth = getAuth(app);
-
-        // 用 Firestore users/{uid}.currentSprintId 作為跨 port 共用的 sprintId
-        let sprintId = localSprintId;
-        if (auth.currentUser) {
-          try {
-            const userSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
-            const fsSprintId = userSnap.exists() ? userSnap.data().currentSprintId : null;
-            if (fsSprintId) sprintId = fsSprintId;
-          } catch {}
-        }
+        const { doc, getDoc, setDoc } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
 
         const ref = doc(db, 'sprints', sprintId);
         const snap = await getDoc(ref);
@@ -120,10 +126,25 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [data, loading]);
 
+  const projectNameTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleProjectNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setProjectName(value);
     localStorage.setItem('currentSprintName', value);
+
+    if (projectNameTimerRef.current) clearTimeout(projectNameTimerRef.current);
+    projectNameTimerRef.current = setTimeout(async () => {
+      const sprintId = localStorage.getItem('currentSprintId');
+      if (!sprintId) return;
+      try {
+        const { doc, setDoc } = await import('firebase/firestore');
+        const { db } = await import('@/lib/firebase');
+        await setDoc(doc(db, 'sprints', sprintId), { name: value }, { merge: true });
+      } catch (err) {
+        console.warn('[planning] 更新專案名稱至 Firestore 失敗:', err);
+      }
+    }, 1000);
   };
 
   const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -133,6 +154,162 @@ export default function Home() {
   };
 
   const [aiLoadingKey, setAiLoadingKey] = useState<string | null>(null);
+
+  // 語音輸入狀態
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl] = useState('');
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [voiceSummaries, setVoiceSummaries] = useState<Record<string, string>>({ 精簡: '', 中等: '', 詳述: '' });
+  const [voiceSummaryLoading, setVoiceSummaryLoading] = useState<Record<string, boolean>>({ 精簡: false, 中等: false, 詳述: false });
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const voiceCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const voiceAudioCtxRef = useRef<AudioContext | null>(null);
+  const voiceAnalyserRef = useRef<AnalyserNode | null>(null);
+  const voiceAnimFrameRef = useRef<number | null>(null);
+
+  const formatRecordTime = (s: number) =>
+    `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+
+  const startVoiceWaveform = (stream: MediaStream) => {
+    const audioCtx = new AudioContext();
+    voiceAudioCtxRef.current = audioCtx;
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+    voiceAnalyserRef.current = analyser;
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    const draw = () => {
+      voiceAnimFrameRef.current = requestAnimationFrame(draw);
+      const canvas = voiceCanvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      analyser.getByteTimeDomainData(dataArray);
+      const W = canvas.width; const H = canvas.height;
+      ctx.fillStyle = '#1a2e1f';
+      ctx.fillRect(0, 0, W, H);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#8fb996';
+      ctx.shadowColor = '#8fb996';
+      ctx.shadowBlur = 4;
+      ctx.beginPath();
+      const sw = W / dataArray.length;
+      let x = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        const y = (dataArray[i] / 128.0) * (H / 2);
+        if (i === 0) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); }
+        x += sw;
+      }
+      ctx.lineTo(W, H / 2);
+      ctx.stroke();
+    };
+    draw();
+  };
+
+  const stopVoiceWaveform = () => {
+    if (voiceAnimFrameRef.current) { cancelAnimationFrame(voiceAnimFrameRef.current); voiceAnimFrameRef.current = null; }
+    if (voiceAudioCtxRef.current) { voiceAudioCtxRef.current.close(); voiceAudioCtxRef.current = null; }
+    voiceAnalyserRef.current = null;
+    const canvas = voiceCanvasRef.current;
+    if (canvas) { const ctx = canvas.getContext('2d'); if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height); }
+  };
+
+  const resetVoice = () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    stopVoiceWaveform();
+    if (mediaRecorderRef.current && isRecording) {
+      try { mediaRecorderRef.current.stop(); } catch {}
+    }
+    setIsRecording(false);
+    setRecordingTime(0);
+    setRecordedBlob(null);
+    setAudioUrl('');
+    setVoiceTranscript('');
+    setVoiceSummaries({ 精簡: '', 中等: '', 詳述: '' });
+    setVoiceSummaryLoading({ 精簡: false, 中等: false, 詳述: false });
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      mediaRecorderRef.current = mr;
+      audioChunksRef.current = [];
+      mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        setRecordedBlob(blob);
+        setAudioUrl(URL.createObjectURL(blob));
+        stream.getTracks().forEach(t => t.stop());
+        stopVoiceWaveform();
+      };
+      mr.start();
+      startVoiceWaveform(stream);
+      setIsRecording(true);
+      setRecordingTime(0);
+      recordingTimerRef.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
+    } catch {
+      alert('無法存取麥克風，請確認瀏覽器已授予麥克風權限。');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+    }
+  };
+
+  const handleTranscribe = async () => {
+    if (!recordedBlob) return;
+    if (!apiKey) { alert('⚠️ 請先輸入 API Key！'); return; }
+    setIsTranscribing(true);
+    setVoiceTranscript('');
+    setVoiceSummaries({ 精簡: '', 中等: '', 詳述: '' });
+    try {
+      const fd = new FormData();
+      fd.append('audio', recordedBlob, 'audio.webm');
+      fd.append('apiKey', apiKey);
+      const res = await fetch('/api/ai-transcribe', { method: 'POST', body: fd });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || '轉錄失敗'); }
+      const result = await res.json();
+      const text = result.text || '';
+      setVoiceTranscript(text);
+      if (text) generateVoiceSummaries(text);
+    } catch (err: unknown) {
+      alert('轉錄失敗：' + ((err as Error).message || '未知錯誤'));
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const generateVoiceSummaries = async (text: string) => {
+    const levelMap: [string, string][] = [['精簡', '精簡'], ['中等', '適中'], ['詳述', '詳細']];
+    setVoiceSummaryLoading({ 精簡: true, 中等: true, 詳述: true });
+    await Promise.all(levelMap.map(async ([label, apiLevel]) => {
+      try {
+        const res = await fetch('/api/ai-voice-summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey, text, level: apiLevel, fieldName: '初步想法' })
+        });
+        const d = await res.json();
+        setVoiceSummaries(prev => ({ ...prev, [label]: d.result || '' }));
+      } catch {
+        setVoiceSummaries(prev => ({ ...prev, [label]: '生成失敗，請重試' }));
+      } finally {
+        setVoiceSummaryLoading(prev => ({ ...prev, [label]: false }));
+      }
+    }));
+  };
 
   const handleAiRewrite = async (setter: React.Dispatch<React.SetStateAction<{ id: string; text: string }[]>>, items: { id: string; text: string }[], index: number, fieldType: 'WHY' | 'WHAT' | 'HOW') => {
     if (!apiKey) {
@@ -257,7 +434,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
-      <div className="max-w-6xl mx-auto space-y-8">
+      <div className="w-full space-y-8">
         
         <Navigation />
 
@@ -463,11 +640,19 @@ export default function Home() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="font-bold text-[#6b5e50]">初步想法 (PO提出)</label>
-              <textarea 
+              <div className="flex items-center justify-between">
+                <label className="font-bold text-[#6b5e50]">初步想法 (PO提出)</label>
+                <button
+                  onClick={() => { resetVoice(); setShowVoiceModal(true); }}
+                  className="flex items-center gap-1.5 text-xs font-bold text-[#5b755e] bg-[#e8eedd] border-2 border-[#8fb996] px-2.5 py-1 rounded-lg hover:bg-[#dcedc1] transition-all"
+                >
+                  🎙️ 語音輸入
+                </button>
+              </div>
+              <textarea
                 value={data.poIdea}
                 onChange={e => updateData({ poIdea: e.target.value })}
-                rows={2} 
+                rows={2}
                 className="w-full px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]"
                 placeholder="請輸入初步想法..."
               />
@@ -527,6 +712,115 @@ export default function Home() {
         </section>
 
       </div>
+
+      {/* 語音輸入 Modal */}
+      {showVoiceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { resetVoice(); setShowVoiceModal(false); }}>
+          <div className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="bg-[#5b755e] text-white px-6 py-4 rounded-t-2xl flex items-center justify-between flex-shrink-0">
+              <h2 className="font-bold text-lg">🎙️ 語音輸入 — 初步想法</h2>
+              <button onClick={() => { resetVoice(); setShowVoiceModal(false); }} className="text-white/70 hover:text-white text-xl font-bold">✕</button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-5 space-y-4">
+              {/* 錄音控制 */}
+              <div className="flex flex-col items-center gap-3 py-3">
+                {!recordedBlob ? (
+                  <>
+                    {isRecording ? (
+                      <>
+                        <canvas ref={voiceCanvasRef} width={500} height={48} className="w-full rounded-xl border-2 border-[#5b755e] bg-[#1a2e1f]" />
+                        <div className="flex items-center gap-3">
+                          <div className="text-lg font-mono text-red-500 font-bold animate-pulse">⏺ {formatRecordTime(recordingTime)}</div>
+                          <button onClick={stopRecording} className="bg-red-500 hover:bg-red-600 text-white font-bold px-5 py-2.5 rounded-full shadow-md transition-all active:scale-95">
+                            ⏹ 停止錄音
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <button onClick={startRecording} className="bg-[#e07a5f] hover:bg-[#c66147] text-white font-bold px-6 py-3 rounded-full shadow-md transition-all active:scale-95 flex items-center gap-2 text-base">
+                        🎙️ 開始錄音
+                      </button>
+                    )}
+                    <div className="text-xs text-[#8a7f72]">請確認瀏覽器已允許麥克風存取</div>
+                  </>
+                ) : (
+                  <div className="w-full space-y-3">
+                    <div className="flex items-center gap-3">
+                      <audio src={audioUrl} controls className="flex-1 h-10" />
+                      <button
+                        onClick={() => { setRecordedBlob(null); setAudioUrl(''); setVoiceTranscript(''); setVoiceSummaries({ 精簡: '', 中等: '', 詳述: '' }); }}
+                        className="text-xs text-[#8a7f72] hover:text-[#3e362e] border border-[#d3cbbd] px-2 py-1 rounded-lg whitespace-nowrap"
+                      >
+                        重新錄
+                      </button>
+                    </div>
+                    {!voiceTranscript && (
+                      <button
+                        onClick={handleTranscribe}
+                        disabled={isTranscribing}
+                        className="w-full bg-[#5b755e] hover:bg-[#4a6250] disabled:opacity-50 text-white font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2"
+                      >
+                        {isTranscribing
+                          ? <><span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />AI 轉錄中...</>
+                          : '✨ AI 轉錄 & 解析'}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 原始轉錄 */}
+              {voiceTranscript && (
+                <div className="bg-[#f4f1ea] border border-[#d3cbbd] rounded-xl p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-xs font-bold text-[#8a7f72]">原始轉錄文字</div>
+                    <button
+                      onClick={() => { updateData({ poIdea: voiceTranscript }); setShowVoiceModal(false); }}
+                      className="text-xs text-[#5b755e] border border-[#8fb996] px-2 py-0.5 rounded-lg hover:bg-[#e8eedd]"
+                    >
+                      使用原文
+                    </button>
+                  </div>
+                  <div className="text-sm text-[#3e362e] leading-relaxed">{voiceTranscript}</div>
+                </div>
+              )}
+
+              {/* AI 摘要三等級 */}
+              {voiceTranscript && (
+                <div className="space-y-3">
+                  <div className="text-xs font-bold text-[#6b5e50] uppercase tracking-wide">AI 摘要等級</div>
+                  {(['精簡', '中等', '詳述'] as const).map(level => (
+                    <div key={level} className="bg-[#fffdf9] border-2 border-[#d3cbbd] rounded-xl p-3">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="text-xs font-bold text-[#5b755e]">{level === '精簡' ? '🌿 精簡' : level === '中等' ? '🌱 中等' : '📖 詳述'}</div>
+                        {voiceSummaries[level] && !voiceSummaryLoading[level] && (
+                          <button
+                            onClick={() => { updateData({ poIdea: voiceSummaries[level] }); setShowVoiceModal(false); }}
+                            className="text-xs bg-[#5b755e] text-white px-2.5 py-1 rounded-lg hover:bg-[#4a6250] transition-all"
+                          >
+                            使用此版本
+                          </button>
+                        )}
+                      </div>
+                      {voiceSummaryLoading[level] ? (
+                        <div className="flex items-center gap-2 text-xs text-[#8a7f72]">
+                          <span className="inline-block w-3 h-3 border-2 border-[#8fb996] border-t-transparent rounded-full animate-spin" />
+                          生成中...
+                        </div>
+                      ) : voiceSummaries[level] ? (
+                        <div className="text-sm text-[#3e362e] leading-relaxed whitespace-pre-wrap">{voiceSummaries[level]}</div>
+                      ) : (
+                        <div className="text-xs text-[#b5a695]">—</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

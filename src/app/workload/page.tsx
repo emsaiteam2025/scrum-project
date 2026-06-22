@@ -53,6 +53,7 @@ interface PersonTask {
   hours: number;
   status: string;
   sprintName: string;
+  sprintId: string;
 }
 
 interface SprintBreakdown {
@@ -163,7 +164,8 @@ export default function WorkloadPage() {
             const planning = d.planning || {};
             const backlog = d.backlog || {};
             const allTasks: Task[] = backlog.tasks || [];
-            const taskItems = allTasks.filter((t: Task) => t.type === 'task');
+            const pbiIds = new Set(allTasks.filter((t: Task) => t.status === 'pbi').map((t: Task) => t.id));
+            const taskItems = allTasks.filter((t: Task) => t.type === 'task' && t.pbiId && pbiIds.has(t.pbiId));
             const sprintDays = Number(backlog.sprintDays) || 14;
             const startDate = planning.startDate || '';
             results.push({
@@ -176,7 +178,7 @@ export default function WorkloadPage() {
               tasks: taskItems,
               progress: {
                 total: taskItems.length,
-                done: taskItems.filter((t: Task) => t.status === 'done').length,
+                done: taskItems.filter((t: Task) => t.status === 'done' || t.status === 'accepted').length,
                 doing: taskItems.filter((t: Task) => t.status === 'doing').length,
                 todo: taskItems.filter((t: Task) => t.status === 'todo').length,
               },
@@ -196,19 +198,47 @@ export default function WorkloadPage() {
     load();
   }, [selectedIds, sprints]);
 
+  // Sprint 被視為「已完成」：任務數 > 0 且全部完成/驗收，或 sprintStatus === 'completed'
+  const isSprintCompleted = useMemo(() => (sw: SprintWorkload) =>
+    (sw.progress.total > 0 && sw.progress.done === sw.progress.total) ||
+    sprints.find(s => s.id === sw.sprintId)?.sprintStatus === 'completed'
+  , [sprints]);
+
+  const activeWorkloads = useMemo(() =>
+    sprintWorkloads.filter(sw => !isSprintCompleted(sw))
+  , [sprintWorkloads, isSprintCompleted]);
+
+  const completedWorkloads = useMemo(() =>
+    sprintWorkloads.filter(sw => isSprintCompleted(sw))
+  , [sprintWorkloads, isSprintCompleted]);
+
   const personLoads = useMemo<PersonLoad[]>(() => {
     const map = new Map<string, PersonLoad>();
+    // 記錄每人涵蓋的工作日（聯集），避免重疊 sprint 重複計算容量
+    const workingDaySets = new Map<string, Set<string>>();
 
-    for (const sw of sprintWorkloads) {
+    for (const sw of activeWorkloads) {
       for (const dev of sw.devsList) {
         const key = dev.name.trim();
         if (!map.has(key)) {
           map.set(key, { name: key, role: dev.role || '', capacity: 0, assigned: 0, done: 0, remaining: 0, loadPct: 0, tasks: [], sprintBreakdown: [] });
+          workingDaySets.set(key, new Set<string>());
         }
         const p = map.get(key)!;
-        const cap = sw.workingDays * 8;
-        p.capacity += cap;
         if (!p.role && dev.role) p.role = dev.role;
+
+        // 將此 sprint 的工作日加入聯集 Set
+        const daySet = workingDaySets.get(key)!;
+        if (sw.startDate) {
+          const start = new Date(sw.startDate);
+          for (let i = 0; i < sw.sprintDays; i++) {
+            const d = new Date(start);
+            d.setDate(start.getDate() + i);
+            if (d.getDay() !== 0 && d.getDay() !== 6) daySet.add(d.toISOString().slice(0, 10));
+          }
+        }
+
+        const cap = sw.workingDays * 8;
 
         // Per-sprint breakdown
         const myTasks = sw.tasks.filter(t => t.role?.split(',').map(r => r.trim()).includes(key));
@@ -240,19 +270,23 @@ export default function WorkloadPage() {
           p.assigned += hrs;
           if (task.status === 'done') p.done += hrs;
           else p.remaining += hrs;
-          p.tasks.push({ title: task.title, hours: hrs, status: task.status, sprintName: sw.sprintName });
+          p.tasks.push({ title: task.title, hours: hrs, status: task.status, sprintName: sw.sprintName, sprintId: sw.sprintId });
         }
       }
     }
 
-    map.forEach(p => {
+    map.forEach((p, key) => {
+      const daySet = workingDaySets.get(key);
+      if (daySet && daySet.size > 0) {
+        p.capacity = daySet.size * 8;
+      }
       p.loadPct = p.capacity > 0 ? Math.round(p.assigned / p.capacity * 100) : 0;
     });
 
     const arr: PersonLoad[] = [];
     map.forEach(p => arr.push(p));
     return arr.sort((a, b) => b.loadPct - a.loadPct);
-  }, [sprintWorkloads]);
+  }, [activeWorkloads]);
 
   const toggleSprint = (id: string) => {
     setSelectedIds(prev => {
@@ -356,14 +390,16 @@ export default function WorkloadPage() {
                   <span className="text-xs text-[#b5a695] italic">目前無進行中或待開始的 Sprint</span>
                 )}
               </div>
-              {completedSprints.length > 0 && (
-                <div className="flex items-center gap-2 pt-1 border-t border-[#f4f1ea]">
-                  <button
-                    onClick={() => setShowCompleted(v => !v)}
-                    className={`text-xs px-3 py-1 rounded-full font-bold border-2 transition-all ${showCompleted ? 'bg-[#8a7f72] text-white border-[#8a7f72]' : 'bg-white text-[#8a7f72] border-[#d3cbbd] hover:border-[#b5a695]'}`}
-                  >
-                    {showCompleted ? '隱藏已完成' : `顯示已完成（${completedSprints.length}）`}
-                  </button>
+              {(completedSprints.length > 0 || completedWorkloads.length > 0) && (
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[#f4f1ea]">
+                  {completedSprints.length > 0 && (
+                    <button
+                      onClick={() => setShowCompleted(v => !v)}
+                      className={`text-xs px-3 py-1 rounded-full font-bold border-2 transition-all ${showCompleted ? 'bg-[#8a7f72] text-white border-[#8a7f72]' : 'bg-white text-[#8a7f72] border-[#d3cbbd] hover:border-[#b5a695]'}`}
+                    >
+                      {showCompleted ? '隱藏已完成' : `顯示已完成（${completedSprints.length}）`}
+                    </button>
+                  )}
                   {showCompleted && completedSprints.map(s => (
                     <button
                       key={s.id}
@@ -374,6 +410,11 @@ export default function WorkloadPage() {
                       ✅ {s.name}
                     </button>
                   ))}
+                  {completedWorkloads.length > 0 && (
+                    <span className="text-xs text-[#8a7f72] italic">
+                      ✅ 已自動排除 {completedWorkloads.map(sw => sw.sprintName).join('、')} （100% 完成）
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -550,7 +591,13 @@ export default function WorkloadPage() {
                           <p className="text-xs font-bold text-[#5b755e] mb-2">📋 指派任務</p>
                           <div className="space-y-1.5">
                             {p.tasks.map((t, i) => (
-                              <div key={i} className="flex items-center gap-3 text-sm bg-[#f4f1ea] rounded-xl px-3 py-2">
+                              <button key={i}
+                                onClick={() => {
+                                  localStorage.setItem('currentSprintId', t.sprintId);
+                                  localStorage.setItem('currentSprintName', t.sprintName);
+                                  window.location.href = '/backlog';
+                                }}
+                                className="w-full flex items-center gap-3 text-sm bg-[#f4f1ea] rounded-xl px-3 py-2 hover:bg-[#e8eedd] border border-transparent hover:border-[#8fb996] transition-all cursor-pointer text-left">
                                 <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot(t.status)}`} />
                                 <span className="flex-1 truncate text-[#3e362e]">{t.title}</span>
                                 <span className="text-[10px] text-[#8a7f72] shrink-0 hidden sm:block">{statusLabel(t.status)}</span>
@@ -558,7 +605,8 @@ export default function WorkloadPage() {
                                 <span className="text-xs font-bold text-[#5b755e] shrink-0 bg-[#e8eedd] px-2 py-0.5 rounded-full min-w-[36px] text-center">
                                   {t.hours > 0 ? `${t.hours}h` : '—'}
                                 </span>
-                              </div>
+                                <span className="text-[#8fb996] text-xs shrink-0">→</span>
+                              </button>
                             ))}
                           </div>
                         </div>
@@ -575,17 +623,20 @@ export default function WorkloadPage() {
         )}
 
         {/* Cross-sprint comparison table */}
-        {!loadingData && sprintWorkloads.length > 1 && personLoads.length > 0 && (
+        {!loadingData && activeWorkloads.length > 1 && personLoads.length > 0 && (
           <div className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-2xl overflow-hidden">
-            <div className="bg-[#5b755e] p-4 text-white font-bold flex items-center gap-2">
-              <span>📈</span> Sprint 跨期負荷比較
+            <div className="bg-[#5b755e] p-4 text-white font-bold flex items-center gap-2 justify-between">
+              <div className="flex items-center gap-2"><span>📈</span> Sprint 跨期負荷比較</div>
+              {completedWorkloads.length > 0 && (
+                <span className="text-xs font-normal opacity-80">✅ 已排除 {completedWorkloads.length} 個已完成 Sprint</span>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="bg-[#f4f1ea]">
                     <th className="p-3 text-left text-[#5b755e] font-bold sticky left-0 bg-[#f4f1ea] border-b-2 border-[#e8d5b5]">人員</th>
-                    {sprintWorkloads.map(sw => {
+                    {activeWorkloads.map(sw => {
                       const doneRate = sw.progress.total > 0 ? Math.round(sw.progress.done / sw.progress.total * 100) : 0;
                       const doingRate = sw.progress.total > 0 ? Math.round(sw.progress.doing / sw.progress.total * 100) : 0;
                       // 計算已進行天數
@@ -645,7 +696,7 @@ export default function WorkloadPage() {
                       <td className="p-3 font-bold sticky left-0 text-[#3e362e] border-b border-[#f4f1ea]" style={{ background: ri % 2 === 0 ? 'white' : '#faf8f5' }}>
                         {p.name}
                       </td>
-                      {sprintWorkloads.map(sw => {
+                      {activeWorkloads.map(sw => {
                         const devInSprint = sw.devsList.find(d => d.name.trim() === p.name);
                         if (!devInSprint) {
                           return (

@@ -1,64 +1,15 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { useTimer } from '@/contexts/TimerContext';
 
 export default function CountdownTimer({
-  defaultMinutes = 15,
   presets = [5, 10, 15, 30],
 }: {
   defaultMinutes?: number;
   presets?: number[];
 }) {
-  const [minutes, setMinutes] = useState<number>(defaultMinutes);
-  const [remaining, setRemaining] = useState<number>(defaultMinutes * 60);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [finished, setFinished] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (!isRunning) return;
-    const t = setInterval(() => {
-      setRemaining(prev => {
-        if (prev <= 1) {
-          setIsRunning(false);
-          setFinished(true);
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const AC = window.AudioContext || (window as any).webkitAudioContext;
-            const ctx = new AC();
-            [0, 350, 700].forEach(delay => {
-              setTimeout(() => {
-                const o = ctx.createOscillator();
-                const g = ctx.createGain();
-                o.connect(g); g.connect(ctx.destination);
-                o.frequency.value = 880;
-                g.gain.value = 0.25;
-                o.start();
-                setTimeout(() => { o.stop(); }, 250);
-              }, delay);
-            });
-            setTimeout(() => { try { ctx.close(); } catch {} }, 1500);
-          } catch {}
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(t);
-  }, [isRunning]);
-
-  const applyMinutes = (m: number) => {
-    const safe = Math.max(1, Math.min(180, Math.floor(m) || 1));
-    setMinutes(safe);
-    setRemaining(safe * 60);
-    setIsRunning(false);
-    setFinished(false);
-  };
-
-  const reset = () => {
-    setRemaining(minutes * 60);
-    setIsRunning(false);
-    setFinished(false);
-  };
+  const { minutes, remaining, isRunning, finished, floatVisible, applyMinutes, reset, toggleRun, setFloatVisible } = useTimer();
 
   const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
   const ss = String(remaining % 60).padStart(2, '0');
@@ -105,10 +56,7 @@ export default function CountdownTimer({
         </div>
 
         <button
-          onClick={() => {
-            if (finished) { reset(); return; }
-            setIsRunning(r => !r);
-          }}
+          onClick={toggleRun}
           className={`px-5 py-2 rounded-xl font-bold text-white border-2 shadow transition-all hover:-translate-y-0.5 ${isRunning ? 'bg-[#d4a373] border-[#8b5a2b] hover:bg-[#b8895a]' : 'bg-[#8fb996] border-[#5b755e] hover:bg-[#78a07e]'}`}
         >
           {isRunning ? '⏸ 暫停' : finished ? '🔄 重設' : '▶ 開始'}
@@ -119,6 +67,14 @@ export default function CountdownTimer({
           className="px-4 py-2 rounded-xl font-bold text-[#3e362e] bg-[#fffdf9] border-2 border-[#b5a695] hover:bg-[#f1ece3] transition-colors"
         >
           重設
+        </button>
+
+        <button
+          onClick={() => setFloatVisible(v => !v)}
+          title={floatVisible ? '關閉懸浮計時器' : '開啟懸浮計時器'}
+          className={`px-4 py-2 rounded-xl font-bold border-2 transition-all ${floatVisible ? 'bg-[#76a5af] text-white border-[#467386]' : 'bg-[#fffdf9] text-[#467386] border-[#76a5af] hover:bg-[#e8f0f4]'}`}
+        >
+          📌 懸浮
         </button>
       </div>
     </section>

@@ -1,11 +1,16 @@
 "use client";
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import Navigation from '@/components/Navigation';
 import SaveIndicator from '@/components/SaveIndicator';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import CountdownTimer from '@/components/CountdownTimer';
+
+function parseYoutubeId(url: string): string | null {
+  const match = url.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return match ? match[1] : null;
+}
 
 function AutoGrowTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -20,6 +25,30 @@ function AutoGrowTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElemen
 }
 
 export default function SprintRetrospective() {
+  const [urlInput, setUrlInput] = useState('');
+  const [embedId, setEmbedId] = useState<string | null>(null);
+  const [musicError, setMusicError] = useState('');
+
+  useEffect(() => {
+    const saved = localStorage.getItem('retro_music_url');
+    if (saved) setUrlInput(saved);
+  }, []);
+
+  const handlePlayMusic = () => {
+    const id = parseYoutubeId(urlInput.trim());
+    if (!id) {
+      setMusicError('請貼上有效的 YouTube 連結');
+      return;
+    }
+    setMusicError('');
+    setEmbedId(id);
+    localStorage.setItem('retro_music_url', urlInput.trim());
+  };
+
+  const handleStopMusic = () => {
+    setEmbedId(null);
+  };
+
   const { data, updateData, loading, saveStatus } = useAutoSave('retrospective', {
     previousActions: '',
     keepStart: '',
@@ -30,7 +59,7 @@ export default function SprintRetrospective() {
 
   return (
     <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
-      <div className="max-w-[1200px] mx-auto space-y-8">
+      <div className="w-full space-y-8">
         
         <div className="flex items-center justify-between">
           <Navigation />
@@ -53,6 +82,56 @@ export default function SprintRetrospective() {
               <span>•</span>
               <span>✨ 提升團隊效能</span>
             </div>
+          </div>
+        </section>
+
+        {/* 背景音樂播放器 */}
+        <section className="bg-[#fffdf9] border-4 border-[#76a5af] rounded-3xl shadow-lg overflow-hidden">
+          <div className="bg-[#c2dce3] border-b-4 border-[#76a5af] p-4 flex items-center gap-2">
+            <span className="text-xl">🎵</span>
+            <span className="font-bold text-[#467386] text-lg">背景音樂</span>
+            <span className="text-sm text-[#5b8a98] font-normal ml-1">— 貼上 YouTube 連結，讓會議更輕鬆</span>
+          </div>
+          <div className="p-5 flex flex-col gap-4">
+            <div className="flex gap-3 items-center flex-wrap">
+              <input
+                type="text"
+                className="flex-1 min-w-[240px] px-4 py-2.5 bg-[#f5fbfc] border-2 border-[#a8cdd6] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#76a5af]/40 font-medium text-[#3e362e] text-sm"
+                placeholder="貼上 YouTube 連結，例如：https://www.youtube.com/watch?v=..."
+                value={urlInput}
+                onChange={e => { setUrlInput(e.target.value); setMusicError(''); }}
+                onKeyDown={e => { if (e.key === 'Enter') handlePlayMusic(); }}
+              />
+              <button
+                onClick={handlePlayMusic}
+                className="bg-[#76a5af] text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-[#5b8a98] transition-colors shadow flex items-center gap-2 whitespace-nowrap"
+              >
+                ▶ 播放
+              </button>
+              {embedId && (
+                <button
+                  onClick={handleStopMusic}
+                  className="bg-[#e07a5f] text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-[#c66147] transition-colors shadow flex items-center gap-2 whitespace-nowrap"
+                >
+                  ■ 停止
+                </button>
+              )}
+            </div>
+            {musicError && <div className="text-sm text-[#c96262] font-bold">⚠ {musicError}</div>}
+            {embedId && (
+              <>
+                <div className="flex items-center gap-2 text-sm font-bold text-[#467386]">
+                  <span className="inline-block w-2 h-2 rounded-full bg-[#76a5af] animate-pulse" />
+                  正在播放背景音樂中...
+                </div>
+                <iframe
+                  key={embedId}
+                  src={`https://www.youtube.com/embed/${embedId}?autoplay=1&loop=1&playlist=${embedId}&rel=0`}
+                  allow="autoplay; encrypted-media"
+                  style={{ position: 'absolute', width: '1px', height: '1px', opacity: 0, pointerEvents: 'none' }}
+                />
+              </>
+            )}
           </div>
         </section>
 
