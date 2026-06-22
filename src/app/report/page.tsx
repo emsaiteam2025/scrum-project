@@ -398,15 +398,55 @@ function TrendCharts({ data, completedCount, totalCount }: { data: ChartPoint[];
         </div>
       </div>
 
-      {/* Sprint 代號對照 */}
+      {/* Sprint 關鍵數據表 */}
       <div className="px-6 pb-5 pt-2">
-        <div className="flex flex-wrap gap-2">
-          {data.map(d => (
-            <span key={d.label} className="text-xs bg-[#f4f1ea] border border-[#d3cbbd] px-2.5 py-1 rounded-lg">
-              <span className="font-black text-[#5b755e]">{d.label}</span>
-              <span className="text-[#8a7f72] ml-1">{d.fullName.length > 12 ? d.fullName.slice(0, 12) + '…' : d.fullName}</span>
-            </span>
-          ))}
+        <div className="text-xs font-black text-[#5b755e] uppercase tracking-widest mb-2">各 Sprint 關鍵數據</div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-[#5b755e] text-white">
+                <th className="px-3 py-2 text-left font-bold rounded-tl-lg whitespace-nowrap">Sprint</th>
+                <th className="px-3 py-2 text-left font-bold">專案名稱</th>
+                <th className="px-3 py-2 text-center font-bold whitespace-nowrap">開始日期</th>
+                <th className="px-3 py-2 text-center font-bold whitespace-nowrap">狀態</th>
+                <th className="px-3 py-2 text-center font-bold whitespace-nowrap">任務完成</th>
+                <th className="px-3 py-2 text-center font-bold rounded-tr-lg whitespace-nowrap">完成率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((d, i) => (
+                <tr key={d.label} className={i % 2 === 0 ? 'bg-[#f4f1ea]' : 'bg-[#fffdf9]'}>
+                  <td className="px-3 py-2 font-black text-[#5b755e] whitespace-nowrap">{d.label}</td>
+                  <td className="px-3 py-2 text-[#3e362e] font-medium max-w-[160px] truncate">{d.fullName}</td>
+                  <td className="px-3 py-2 text-center text-[#8a7f72] whitespace-nowrap">{d.startDate ? fmtDate(d.startDate) : '—'}</td>
+                  <td className="px-3 py-2 text-center">
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                      d.isCompleted
+                        ? 'bg-[#dcedc1] text-[#4a7c59] border-[#8fb996]'
+                        : d.taskCount > 0
+                          ? 'bg-[#fff4c2] text-[#7a5c00] border-[#f0c060]'
+                          : 'bg-[#f4f1ea] text-[#8a7f72] border-[#d3cbbd]'
+                    }`}>
+                      {d.isCompleted ? '已完成' : d.taskCount > 0 ? '進行中' : '待開始'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-center text-[#5b755e] font-bold whitespace-nowrap">
+                    {d.taskCount > 0 ? `${d.doneCount} / ${d.taskCount}` : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-center whitespace-nowrap">
+                    {d.taskCount > 0 ? (
+                      <div className="flex items-center gap-1.5 justify-center">
+                        <div className="w-14 bg-[#e8d5b5] rounded-full h-1.5 overflow-hidden">
+                          <div className="h-full rounded-full bg-[#5b755e]" style={{ width: `${d.completionRate}%` }} />
+                        </div>
+                        <span className="font-black text-[#5b755e] w-7 text-right">{d.completionRate}%</span>
+                      </div>
+                    ) : <span className="text-[#b5a695]">—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
