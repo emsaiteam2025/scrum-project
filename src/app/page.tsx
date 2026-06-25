@@ -620,9 +620,11 @@ export default function SprintList() {
     return true; // 有未完成任務但無日期，視為進行中
   };
 
-  // 預設勾選「進行中」Sprint
+  // 預設勾選「進行中」Sprint（等 sprints 與 dashboards 都載完才執行）
   useEffect(() => {
     if (dashLoading) return;
+    if (sprints.length === 0) return;
+    if (Object.keys(dashboards).length < sprints.length) return; // dashboard 資料尚未全部就緒
     setSelectedSprintIds(prev => {
       if (prev.size > 0) return prev;
       return new Set(sprints.filter(isSprintInProgress).map(s => s.id));
