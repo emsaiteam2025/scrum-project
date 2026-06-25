@@ -39,31 +39,65 @@ interface JournalRawData { allData: JSprintData[]; loadLines: string[]; headerMe
 
 const WEEKDAYS_J_MOD = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
 
+const DIVIDER_HEAVY = '══════════════════════════════';
+const DIVIDER_LIGHT = '──────────────────────────────';
+
 function buildDailyText(raw: JournalRawData, isoDate: string): string {
+  const DOW = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
   const d = new Date(isoDate);
   const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
-  const displayDate = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
-  const dl: string[] = [`工作日報 — ${displayDate}\n${raw.headerMeta}`];
-  if (raw.loadLines.length > 0) { dl.push('【人員總負荷】'); dl.push(...raw.loadLines); dl.push(''); }
+  const displayDate = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}（${DOW[d.getDay()]}）`;
+  const sprintNames = raw.allData.map(s => s.name).join('、');
+  const dl: string[] = [
+    `📋 工作日報  ${displayDate}`,
+    `Sprint：${sprintNames}`,
+    DIVIDER_HEAVY,
+  ];
+
+  if (raw.loadLines.length > 0) {
+    dl.push('');
+    dl.push('👥 人員總負荷');
+    raw.loadLines.forEach(l => dl.push(`• ${l.trim()}`));
+  }
+
   for (const s of raw.allData) {
-    dl.push(`▌ ${s.name}　任務完成率：${s.completionPct}%`);
-    if (s.goal) dl.push(`  Sprint Goal：${s.goal}`);
-    dl.push('─'.repeat(40));
+    dl.push('');
+    dl.push(`▌ ${s.name}  ·  完成率 ${s.completionPct}%`);
+    if (s.goal) dl.push(`🎯 Sprint Goal：${s.goal}`);
+    dl.push(DIVIDER_LIGHT);
+
     const todayDays = s.days.filter(day => day.isoDate === isoDate || (!day.isoDate && day.date === dateStr));
-    if (todayDays.length === 0) { dl.push(`  （${dateStr} 尚無 Daily Scrum 紀錄）\n`); continue; }
+    if (todayDays.length === 0) {
+      dl.push(`  （${dateStr} 尚無 Daily Scrum 紀錄）`);
+      dl.push(DIVIDER_HEAVY);
+      continue;
+    }
+
     for (const day of todayDays) {
-      dl.push(`  Day ${day.idx + 1}/${s.totalDays} (${day.date} ${day.dow}) ${day.done ? '✅' : '○'}`);
-      day.entries.forEach(e => {
-        if (!e.q1 && !e.q2 && !e.q3) return;
-        dl.push(`  【${e.name}】${e.role ? `（${e.role}）` : ''}`);
-        if (e.q1) dl.push(`    昨天完成：${e.q1}`);
-        if (e.q2) dl.push(`    今天計劃：${e.q2}`);
-        if (e.q3) dl.push(`    阻礙事項：${e.q3}`);
+      dl.push(`  ${day.done ? '✅' : '○'} Day ${day.idx + 1}/${s.totalDays}   ${day.date} ${day.dow}`);
+      const activeEntries = day.entries.filter(e => e.q1 || e.q2 || e.q3);
+      if (activeEntries.length === 0) { dl.push('  （本日站會完成，無文字記錄）'); continue; }
+      activeEntries.forEach(e => {
+        dl.push('');
+        dl.push(`  👤 ${e.name}${e.role ? `（${e.role}）` : ''}`);
+        if (e.q1) {
+          dl.push('  ▸ 昨天完成');
+          e.q1.split('\n').forEach(line => dl.push(`    ${line}`));
+        }
+        if (e.q2) {
+          dl.push('  ▸ 今天計劃');
+          e.q2.split('\n').forEach(line => dl.push(`    ${line}`));
+        }
+        if (e.q3) {
+          dl.push('  ▸ 阻礙事項');
+          e.q3.split('\n').forEach(line => dl.push(`    ${line}`));
+        }
       });
-      dl.push('');
     }
     dl.push('');
+    dl.push(DIVIDER_HEAVY);
   }
+
   return dl.join('\n');
 }
 
@@ -73,14 +107,27 @@ function buildWeeklyText(raw: JournalRawData, rangeFrom: string, rangeTo: string
     return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
   };
   const rangeStr = rangeFrom || rangeTo
-    ? `區間：${rangeFrom ? fmtDate(rangeFrom) : '（起始）'} — ${rangeTo ? fmtDate(rangeTo) : '（迄今）'}`
-    : '區間：全部';
-  const wl: string[] = [`工作週報\n${rangeStr}\n${raw.headerMeta}`];
-  if (raw.loadLines.length > 0) { wl.push('【人員總負荷】'); wl.push(...raw.loadLines); wl.push(''); }
+    ? `${rangeFrom ? fmtDate(rangeFrom) : '（起始）'} — ${rangeTo ? fmtDate(rangeTo) : '（迄今）'}`
+    : '全部';
+  const sprintNames = raw.allData.map(s => s.name).join('、');
+  const wl: string[] = [
+    `📋 工作週報  ${rangeStr}`,
+    `Sprint：${sprintNames}`,
+    DIVIDER_HEAVY,
+  ];
+
+  if (raw.loadLines.length > 0) {
+    wl.push('');
+    wl.push('👥 人員總負荷');
+    raw.loadLines.forEach(l => wl.push(`• ${l.trim()}`));
+  }
+
   for (const s of raw.allData) {
-    wl.push(`▌ ${s.name}　任務完成率：${s.completionPct}%`);
-    if (s.goal) wl.push(`  Sprint Goal：${s.goal}`);
-    wl.push('─'.repeat(40));
+    wl.push('');
+    wl.push(`▌ ${s.name}  ·  完成率 ${s.completionPct}%`);
+    if (s.goal) wl.push(`🎯 Sprint Goal：${s.goal}`);
+    wl.push(DIVIDER_LIGHT);
+
     const filtered = s.days.filter(day => {
       if (!rangeFrom && !rangeTo) return true;
       if (!day.isoDate) return true;
@@ -88,7 +135,13 @@ function buildWeeklyText(raw: JournalRawData, rangeFrom: string, rangeTo: string
       if (rangeTo && day.isoDate > rangeTo) return false;
       return true;
     });
-    if (filtered.length === 0) { wl.push('  （所選區間無紀錄）\n'); continue; }
+
+    if (filtered.length === 0) {
+      wl.push('  （所選區間無紀錄）');
+      wl.push(DIVIDER_HEAVY);
+      continue;
+    }
+
     const maxIdx = Math.max(...filtered.map(d => d.idx));
     const numWeeks = Math.ceil((maxIdx + 1) / 7);
     for (let w = 0; w < numWeeks; w++) {
@@ -96,9 +149,12 @@ function buildWeeklyText(raw: JournalRawData, rangeFrom: string, rangeTo: string
       if (weekDays.length === 0) continue;
       const wStart = weekDays[0]; const wEnd = weekDays[weekDays.length - 1];
       const wRange = wStart.date
-        ? `${wStart.date} ${wStart.dow} - ${wEnd.date} ${wEnd.dow}`
-        : `Day ${w*7+1}/${s.totalDays} - Day ${Math.min((w+1)*7, maxIdx+1)}/${s.totalDays}`;
-      wl.push(`\n  第 ${w + 1} 週 (${wRange})`);
+        ? `${wStart.date} ${wStart.dow} — ${wEnd.date} ${wEnd.dow}`
+        : `Day ${w*7+1} — Day ${Math.min((w+1)*7, maxIdx+1)}`;
+
+      wl.push('');
+      wl.push(`  📅 第 ${w + 1} 週   ${wRange}`);
+
       const personNames = Array.from(new Set(weekDays.flatMap(d => d.entries.map(e => e.name))));
       for (const name of personNames) {
         const pDays = weekDays
@@ -106,20 +162,39 @@ function buildWeeklyText(raw: JournalRawData, rangeFrom: string, rangeTo: string
           .filter(d => d.e.q1 || d.e.q2 || d.e.q3);
         if (pDays.length === 0) continue;
         const personRole = pDays[0]?.e?.role || '';
-        wl.push(`  【${name}】${personRole ? `（${personRole}）` : ''}`);
-        const accs = pDays.filter(d => d.e.q1).map(d =>
-          `      ${d.date ? `${d.date} (${d.dow})` : `Day ${d.idx+1}/${s.totalDays}`}：${d.e.q1}`);
-        if (accs.length > 0) { wl.push('    📝 本週完成：'); wl.push(...accs); }
+
+        wl.push('');
+        wl.push(`  👤 ${name}${personRole ? `（${personRole}）` : ''}`);
+
+        const accs = pDays.filter(d => d.e.q1);
+        if (accs.length > 0) {
+          wl.push('  📝 本週完成');
+          accs.forEach(d => {
+            const label = d.date ? `${d.date} (${d.dow})` : `Day ${d.idx+1}/${s.totalDays}`;
+            d.e.q1.split('\n').forEach((line, li) => wl.push(`    ${li === 0 ? `${label}：` : '　　　　'}${line}`));
+          });
+        }
         const lastQ2 = [...pDays].reverse().find(d => d.e.q2);
-        if (lastQ2) wl.push(`    🎯 下週計劃：${lastQ2.e.q2}`);
-        const imps = pDays.filter(d => d.e.q3 && d.e.q3 !== '無').map(d =>
-          `      ${d.date ? `${d.date} (${d.dow})` : `Day ${d.idx+1}/${s.totalDays}`}：${d.e.q3}`);
-        if (imps.length > 0) { wl.push('    ⚠️ 本週阻礙：'); wl.push(...imps); }
-        else wl.push('    ⚠️ 本週阻礙：無');
+        if (lastQ2) {
+          wl.push('  🎯 下週計劃');
+          lastQ2.e.q2.split('\n').forEach(line => wl.push(`    ${line}`));
+        }
+        const imps = pDays.filter(d => d.e.q3 && d.e.q3 !== '無');
+        if (imps.length > 0) {
+          wl.push('  ⚠️ 本週阻礙');
+          imps.forEach(d => {
+            const label = d.date ? `${d.date} (${d.dow})` : `Day ${d.idx+1}/${s.totalDays}`;
+            d.e.q3.split('\n').forEach((line, li) => wl.push(`    ${li === 0 ? `${label}：` : '　　　　'}${line}`));
+          });
+        } else {
+          wl.push('  ⚠️ 本週阻礙：無');
+        }
       }
     }
     wl.push('');
+    wl.push(DIVIDER_HEAVY);
   }
+
   return wl.join('\n');
 }
 
