@@ -34,3 +34,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local dev/patch scripts
+patch_*.js
+docs/
+frames/
+shared/
+v1/
+screenshots/
+uploads/
+tweaks-panel.jsx
+*.html
