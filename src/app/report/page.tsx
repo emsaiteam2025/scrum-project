@@ -88,6 +88,7 @@ interface ChartPoint {
   taskCount: number;
   doneCount: number;
   startDate: string;
+  endDate: string;
   isCompleted: boolean;
 }
 
@@ -408,6 +409,7 @@ function TrendCharts({ data, completedCount, totalCount }: { data: ChartPoint[];
                 <th className="px-3 py-2 text-left font-bold rounded-tl-lg whitespace-nowrap">Sprint</th>
                 <th className="px-3 py-2 text-left font-bold">專案名稱</th>
                 <th className="px-3 py-2 text-center font-bold whitespace-nowrap">開始日期</th>
+                <th className="px-3 py-2 text-center font-bold whitespace-nowrap">結束日期</th>
                 <th className="px-3 py-2 text-center font-bold whitespace-nowrap">狀態</th>
                 <th className="px-3 py-2 text-center font-bold whitespace-nowrap">任務完成</th>
                 <th className="px-3 py-2 text-center font-bold rounded-tr-lg whitespace-nowrap">完成率</th>
@@ -419,6 +421,7 @@ function TrendCharts({ data, completedCount, totalCount }: { data: ChartPoint[];
                   <td className="px-3 py-2 font-black text-[#5b755e] whitespace-nowrap">{d.label}</td>
                   <td className="px-3 py-2 text-[#3e362e] font-medium max-w-[160px] truncate">{d.fullName}</td>
                   <td className="px-3 py-2 text-center text-[#8a7f72] whitespace-nowrap">{d.startDate ? fmtDate(d.startDate) : '—'}</td>
+                  <td className="px-3 py-2 text-center text-[#8a7f72] whitespace-nowrap">{d.endDate ? fmtDate(d.endDate) : '—'}</td>
                   <td className="px-3 py-2 text-center">
                     <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                       d.isCompleted
@@ -749,6 +752,14 @@ export default function ReportPage() {
       const tasks = allItems.filter((t: Task) => t.type === 'task' && t.pbiId && pbiIdSet.has(t.pbiId));
       const done = tasks.filter((t: Task) => t.status === 'done').length;
       const accepted = pbis.filter((t: Task) => !!t.acceptedBy).length;
+      const startDate = s.planning?.startDate || '';
+      const totalDays = parseDurationToDays(s.planning?.duration) ?? (s.daily?.completedDays?.length || 0);
+      let endDate = '';
+      if (startDate && totalDays > 0) {
+        const ed = new Date(startDate);
+        ed.setDate(ed.getDate() + totalDays - 1);
+        endDate = ed.toISOString().slice(0, 10);
+      }
       return {
         label: `S${i + 1}`,
         fullName: s.name || s.planning?.sprintName || `Sprint ${i + 1}`,
@@ -756,7 +767,8 @@ export default function ReportPage() {
         acceptanceRate: pct(accepted, pbis.length),
         taskCount: tasks.length,
         doneCount: done,
-        startDate: s.planning?.startDate || '',
+        startDate,
+        endDate,
         isCompleted: inferStatus(s) === 'completed',
       };
     })
