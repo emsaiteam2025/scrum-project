@@ -62,16 +62,22 @@ export default function DailyScrum() {
   });
 
   const [sprintStartDate, setSprintStartDate] = useState<string>('');
+  const [sprintName, setSprintName] = useState<string>('');
   const [devNames, setDevNames] = useState<string[]>([]);
   const [backlogTasks, setBacklogTasks] = useState<BacklogTask[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [taskBoardExpanded, setTaskBoardExpanded] = useState(true);
   const [taskGroupBy, setTaskGroupBy] = useState<'person' | 'status'>('status');
   const [holidays, setHolidays] = useState<{ id: string; date: string; name: string }[]>([]);
+  const [imagePreviewDay, setImagePreviewDay] = useState<number | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const imageCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const savedDays = localStorage.getItem('sprintDays');
     setSprintDays(savedDays ? Number(savedDays) : 30);
+    const name = localStorage.getItem('currentSprintName');
+    if (name) setSprintName(name);
     try {
       const raw = localStorage.getItem('orgHolidays');
       if (raw) setHolidays(JSON.parse(raw));
@@ -197,6 +203,21 @@ export default function DailyScrum() {
     } else if (key === 'Q3') {
       updateData(prev => ({ dailyNotesQ3: { ...(prev.dailyNotesQ3 || {}), [index]: text } }));
     }
+  };
+
+  const downloadDayImage = async (dayIdx: number) => {
+    const el = imageCardRef.current;
+    if (!el) return;
+    setIsGenerating(true);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#fffdf9', useCORS: true, logging: false });
+      const link = document.createElement('a');
+      link.download = `Day${dayIdx + 1}_站會紀錄_${getDayDate(dayIdx) || ''}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (e) { console.error(e); }
+    setIsGenerating(false);
   };
 
   const handleSaveDay = (dayIndex: number) => {
@@ -733,19 +754,27 @@ export default function DailyScrum() {
                           );
                         })}
                       </div>
-                      <div className="flex justify-between items-center mt-4">
+                      <div className="flex justify-between items-center mt-4 flex-wrap gap-2">
                         <button
                           onClick={() => { handleSaveDay(i); toggleDay(i); }}
                           className="bg-[#5b755e] text-white border-2 border-[#3e5240] px-6 py-2 rounded-xl font-bold hover:bg-[#4a6b50] transition-all shadow-sm flex items-center gap-2"
                         >
                           ✅ 儲存並完成
                         </button>
-                        <button
-                          onClick={() => toggleDay(i)}
-                          className="bg-[#e8eedd] text-[#5b755e] border-2 border-[#8fb996] px-6 py-2 rounded-xl font-bold hover:bg-[#dcedc1] transition-all shadow-sm"
-                        >
-                          收起紀錄
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setImagePreviewDay(i)}
+                            className="bg-[#c2dce3] text-[#467386] border-2 border-[#76a5af] px-4 py-2 rounded-xl font-bold hover:bg-[#aecfd8] transition-all shadow-sm flex items-center gap-2"
+                          >
+                            📷 生成圖片
+                          </button>
+                          <button
+                            onClick={() => toggleDay(i)}
+                            className="bg-[#e8eedd] text-[#5b755e] border-2 border-[#8fb996] px-6 py-2 rounded-xl font-bold hover:bg-[#dcedc1] transition-all shadow-sm"
+                          >
+                            收起紀錄
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -762,8 +791,117 @@ export default function DailyScrum() {
             <span>🚂</span> 前往 Sprint Review (檢視會議)
           </Link>
         </div>
-        
+
       </div>
+
+      {/* 圖片預覽 Modal */}
+      {imagePreviewDay !== null && (() => {
+        const d = imagePreviewDay;
+        const qDefs = [
+          { key: 'Q1' as const, icon: '🔄', label: '昨天完成了什麼？', notes: dailyNotesQ1, bg: '#f0f7f1', border: '#8fb996' },
+          { key: 'Q2' as const, icon: '🎯', label: '今天預計要做什麼？', notes: dailyNotesQ2, bg: '#f0f7f1', border: '#8fb996' },
+          { key: 'Q3' as const, icon: '🚧', label: '遇到的阻礙？', notes: dailyNotesQ3, bg: '#fdf3f3', border: '#e6b1b1' },
+        ];
+        const holiday = getHoliday(d);
+        const leavePeople = leaveStatus[d] || [];
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setImagePreviewDay(null)}>
+            <div className="flex flex-col items-center gap-4 max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              {/* 操作按鈕 */}
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <button
+                  onClick={() => downloadDayImage(d)}
+                  disabled={isGenerating}
+                  className="bg-[#5b755e] text-white px-6 py-2.5 rounded-xl font-bold hover:bg-[#4a6b50] transition-all shadow-md flex items-center gap-2 disabled:opacity-60"
+                >
+                  {isGenerating ? '⏳ 生成中...' : '📥 下載圖片'}
+                </button>
+                <button onClick={() => setImagePreviewDay(null)} className="bg-white/20 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-white/30 transition-all">
+                  ✕ 關閉
+                </button>
+              </div>
+
+              {/* 卡片本體（html2canvas 捕捉目標） */}
+              <div ref={imageCardRef} style={{
+                width: '580px',
+                background: '#fffdf9',
+                borderRadius: '16px',
+                border: '3px solid #5b755e',
+                fontFamily: '"Georgia", "Times New Roman", serif',
+                overflow: 'hidden',
+                color: '#3e362e',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.15)',
+              }}>
+                {/* Header */}
+                <div style={{ background: '#5b755e', padding: '18px 24px' }}>
+                  {sprintName && <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '12px', marginBottom: '4px' }}>{sprintName}</div>}
+                  <div style={{ color: 'white', fontSize: '22px', fontWeight: 'bold' }}>
+                    📅 Day {d + 1}
+                    {holiday && <span style={{ fontSize: '14px', marginLeft: '10px', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '8px' }}>🎌 {holiday.name}</span>}
+                  </div>
+                  <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px', marginTop: '4px' }}>
+                    {getDayDate(d)} {getDayOfWeek(d)}
+                  </div>
+                </div>
+
+                {/* 請假狀況 */}
+                {leavePeople.length > 0 && (
+                  <div style={{ background: '#fff9e6', borderBottom: '2px solid #f0c060', padding: '10px 24px', fontSize: '13px', color: '#7a5c00' }}>
+                    🏖 本日請假：{leavePeople.join('、')}
+                  </div>
+                )}
+
+                {/* Q sections */}
+                {qDefs.map((q, qi) => {
+                  const hasContent = devNames.length > 0
+                    ? devNames.some(n => !isOnLeave(d, n) && !!getPersonNote(q.notes, d, n))
+                    : !!(typeof (q.notes as Record<number, unknown>)[d] === 'string' && (q.notes as Record<number, string>)[d]);
+                  return (
+                    <div key={q.key} style={{ borderTop: qi > 0 ? '2px solid #e8d5b5' : undefined, padding: '14px 24px' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '10px', color: qi === 2 ? '#c96262' : '#5b755e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>{q.icon}</span> {q.label}
+                      </div>
+                      {!hasContent && devNames.length > 0 ? (
+                        <div style={{ fontSize: '13px', color: '#b5a695', fontStyle: 'italic' }}>（無紀錄）</div>
+                      ) : devNames.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {devNames.map(name => {
+                            if (isOnLeave(d, name)) return null;
+                            const text = getPersonNote(q.notes, d, name);
+                            if (!text) return null;
+                            return (
+                              <div key={name} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                                <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: '#5b755e', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', flexShrink: 0, marginTop: '2px' }}>
+                                  {name.charAt(0)}
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ fontSize: '11px', color: '#8a7f72', marginBottom: '3px', fontWeight: 'bold' }}>{name}</div>
+                                  <div style={{ background: q.bg, border: `1.5px solid ${q.border}`, borderRadius: '8px', padding: '7px 10px', fontSize: '13px', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                                    {text}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div style={{ background: q.bg, border: `1.5px solid ${q.border}`, borderRadius: '8px', padding: '8px 12px', fontSize: '13px', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                          {typeof (q.notes as Record<number, unknown>)[d] === 'string' ? (q.notes as Record<number, string>)[d] : ''}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Footer */}
+                <div style={{ background: '#e8eedd', padding: '10px 24px', fontSize: '11px', color: '#8a7f72', textAlign: 'center', borderTop: '2px solid #c8d8c0' }}>
+                  Daily Scrum · {new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </main>
   );
 }

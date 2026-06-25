@@ -129,7 +129,7 @@ export default function Navigation() {
             <span>🧠</span> 知識學習
           </Link>
         </div>
-        <div className="text-[10px] font-bold text-[#b5a695] ml-2 px-2 py-1 bg-[#fffdf9] rounded border border-[#e8d5b5]">v1.0.207</div>
+        <div className="text-[10px] font-bold text-[#b5a695] ml-2 px-2 py-1 bg-[#fffdf9] rounded border border-[#e8d5b5]">v1.0.208</div>
         {currentSprintName && (
           <div className="flex items-center gap-2 flex-wrap">
             <div className="text-sm font-bold text-[#6b5e50] bg-[#fffdf9] px-4 py-2 rounded-xl border-2 border-[#b5a695] shadow-sm">
