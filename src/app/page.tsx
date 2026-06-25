@@ -602,21 +602,28 @@ export default function SprintList() {
     fetchDashboard();
   }, [sprints, loading, user]);
 
+  // 判斷某 Sprint 是否「進行中」（優先使用日期範圍，再 fallback 任務狀態）
+  const isSprintInProgress = (s: Sprint): boolean => {
+    if (s.sprintStatus === 'in-progress') return true;
+    if (s.sprintStatus === 'completed' || s.sprintStatus === 'pending') return false;
+    const d = dashboards[s.id];
+    const today = new Date().toISOString().slice(0, 10);
+    if (d?.startDate && d?.endDate) return today >= d.startDate && today <= d.endDate;
+    const total = d?.totalTasks ?? 0;
+    if (total === 0) return false;
+    const td = d?.todo ?? 0;
+    const dg = d?.doing ?? 0;
+    return !(td === 0 && dg === 0);
+  };
+
   // 預設勾選「進行中」Sprint
   useEffect(() => {
     if (dashLoading) return;
     setSelectedSprintIds(prev => {
       if (prev.size > 0) return prev;
-      const inProgress = sprints.filter(s => {
-        const d = dashboards[s.id];
-        const total = d?.totalTasks ?? 0;
-        const td = d?.todo ?? 0;
-        const dg = d?.doing ?? 0;
-        const auto = total === 0 ? 'pending' : (td === 0 && dg === 0) ? 'completed' : dg > 0 ? 'in-progress' : 'pending';
-        return (s.sprintStatus ?? auto) === 'in-progress';
-      });
-      return new Set(inProgress.map(s => s.id));
+      return new Set(sprints.filter(isSprintInProgress).map(s => s.id));
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashLoading, sprints, dashboards]);
 
   // 日期變更時重新產生日誌文字
@@ -850,21 +857,27 @@ export default function SprintList() {
   };
 
   const handleExportJournal = async () => {
-    if (selectedSprintIds.size === 0) return;
+    let exportIds = selectedSprintIds;
+    if (exportIds.size === 0) {
+      const auto = new Set(sprints.filter(isSprintInProgress).map(s => s.id));
+      if (auto.size === 0) return;
+      setSelectedSprintIds(auto);
+      exportIds = auto;
+    }
     setShowJournalModal(true);
     setJournalLoading(true);
     setJournalDailyText('');
     setJournalWeeklyText('');
 
     const now = new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
-    const selectedNames = Array.from(selectedSprintIds).map(id => sprints.find(s => s.id === id)?.name || id);
+    const selectedNames = Array.from(exportIds).map(id => sprints.find(s => s.id === id)?.name || id);
     const headerMeta = `產出時間：${now}\nSprint：${selectedNames.join('、')}\n${'='.repeat(50)}\n`;
 
     const allData: JSprintData[] = [];
     // 跨 sprint 日期聯集，避免重疊時段重複計算容量
     const personDateSets = new Map<string, Set<string>>();
 
-    for (const sprintId of Array.from(selectedSprintIds)) {
+    for (const sprintId of Array.from(exportIds)) {
       const sprint = sprints.find(s => s.id === sprintId);
       const sprintName = sprint?.name || sprintId;
       try {
@@ -1054,19 +1067,28 @@ export default function SprintList() {
                   <span>📊</span> 成效報告
                 </Link>
               )}
-              <button
-                onClick={handleExportJournal}
-                disabled={selectedSprintIds.size === 0}
-                className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold shadow-md transition-all border-2 ${
-                  selectedSprintIds.size > 0
-                    ? 'bg-[#f2e3c6] text-[#8b5a2b] border-[#d4a373] hover:bg-[#e8d0a8] hover:-translate-y-1'
-                    : 'bg-[#ede9e2] text-[#b5a695] border-[#d3cbbd] cursor-not-allowed'
-                }`}
-                title={selectedSprintIds.size === 0 ? '請先勾選欲匯出的 Sprint' : `匯出 ${selectedSprintIds.size} 個 Sprint 的工作日誌`}
-              >
-                <span>📋</span>
-                {selectedSprintIds.size > 0 ? `匯出工作日誌 (${selectedSprintIds.size})` : '匯出工作日誌'}
-              </button>
+              {(() => {
+                const hasInProgress = !dashLoading && sprints.some(isSprintInProgress);
+                const canExport = selectedSprintIds.size > 0 || hasInProgress;
+                const label = selectedSprintIds.size > 0
+                  ? `匯出工作日誌 (${selectedSprintIds.size})`
+                  : hasInProgress ? '匯出工作日誌（進行中）' : '匯出工作日誌';
+                return (
+                  <button
+                    onClick={handleExportJournal}
+                    disabled={!canExport}
+                    className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold shadow-md transition-all border-2 ${
+                      canExport
+                        ? 'bg-[#f2e3c6] text-[#8b5a2b] border-[#d4a373] hover:bg-[#e8d0a8] hover:-translate-y-1'
+                        : 'bg-[#ede9e2] text-[#b5a695] border-[#d3cbbd] cursor-not-allowed'
+                    }`}
+                    title={canExport ? label : '目前無進行中的 Sprint'}
+                  >
+                    <span>📋</span>
+                    {label}
+                  </button>
+                );
+              })()}
 
               <button
                 onClick={createSprint}
