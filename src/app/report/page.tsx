@@ -419,7 +419,7 @@ function TrendCharts({ data, completedCount, totalCount }: { data: ChartPoint[];
               {data.map((d, i) => (
                 <tr key={d.label} className={i % 2 === 0 ? 'bg-[#f4f1ea]' : 'bg-[#fffdf9]'}>
                   <td className="px-3 py-2 font-black text-[#5b755e] whitespace-nowrap">{d.label}</td>
-                  <td className="px-3 py-2 text-[#3e362e] font-medium max-w-[160px] truncate">{d.fullName}</td>
+                  <td className="px-3 py-2 text-[#3e362e] font-medium">{d.fullName}</td>
                   <td className="px-3 py-2 text-center text-[#8a7f72] whitespace-nowrap">{d.startDate ? fmtDate(d.startDate) : '—'}</td>
                   <td className="px-3 py-2 text-center text-[#8a7f72] whitespace-nowrap">{d.endDate ? fmtDate(d.endDate) : '—'}</td>
                   <td className="px-3 py-2 text-center">
