@@ -303,6 +303,37 @@ export default function DailyScrum() {
               <span className="text-3xl">⏳</span>
               <div className="text-lg">限時 15 分鐘</div>
             </div>
+            {(() => {
+              const total = Number(sprintDays) || 0;
+              if (!sprintStartDate) {
+                return (
+                  <div className="bg-[#e8eedd] border-2 border-[#8fb996] p-4 rounded-xl shadow-inner text-[#4a7c59] font-bold flex items-center gap-3 md:w-64 justify-center">
+                    <span className="text-3xl">📅</span>
+                    <div><div className="text-sm">共 {total} 天 Sprint</div><div className="text-xs font-medium text-[#6b8f71] mt-0.5">（尚未設定開始日期）</div></div>
+                  </div>
+                );
+              }
+              const today = new Date(); today.setHours(0,0,0,0);
+              const start = new Date(sprintStartDate); start.setHours(0,0,0,0);
+              const elapsed = Math.floor((today.getTime() - start.getTime()) / 86400000) + 1;
+              const remaining = Math.max(0, total - elapsed);
+              const isOverdue = elapsed > total;
+              return (
+                <div className={`p-4 rounded-xl shadow-inner font-bold flex items-center gap-3 md:w-64 justify-center border-2 ${
+                  isOverdue ? 'bg-[#fceded] border-[#e6b1b1] text-[#c96262]'
+                  : remaining <= 3 ? 'bg-[#fff4c2] border-[#f0c060] text-[#7a5c00]'
+                  : 'bg-[#e8eedd] border-[#8fb996] text-[#4a7c59]'
+                }`}>
+                  <span className="text-3xl">📅</span>
+                  <div>
+                    {isOverdue
+                      ? <><div className="text-base">⚠️ 已超出 {elapsed - total} 天</div><div className="text-xs font-medium mt-0.5">共 {total} 天 Sprint</div></>
+                      : <><div className="text-base font-black">還剩 {remaining} 天</div><div className="text-xs font-medium mt-0.5">第 {Math.min(elapsed, total)} 天 / 共 {total} 天</div></>
+                    }
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </section>
 
