@@ -1660,13 +1660,199 @@ export default function SprintList() {
                     <div className="font-bold">讀取中，請稍候...</div>
                   </div>
                 ) : (
-                  <pre className="text-xs text-[#3e362e] font-mono whitespace-pre-wrap leading-relaxed bg-[#f9f7f4] border border-[#e8d5b5] rounded-2xl p-4 select-all">
-                    {journalType === 'daily' ? journalDailyText : journalWeeklyText}
-                  </pre>
+                  <div className="space-y-1">
+                    {/* 人員總負荷 */}
+                    {journalRawRef.current && journalRawRef.current.loadLines.length > 0 && (
+                      <div className="mb-4 bg-[#e8eedd] border-2 border-[#8fb996] rounded-2xl p-3">
+                        <div className="text-xs font-bold text-[#3e6b47] mb-2 flex items-center gap-1.5">
+                          <span>👥</span> 人員總負荷
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {journalRawRef.current.loadLines.map((line, li) => (
+                            <div key={li} className="text-xs text-[#3e362e] bg-white border border-[#8fb996] px-3 py-1.5 rounded-xl shadow-sm">
+                              {line.trim()}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Sprint 卡片 */}
+                    {journalRawRef.current && journalRawRef.current.allData.map((sprint, si) => {
+                      const filteredDays = sprint.days.filter(day => {
+                        if (journalType === 'daily') {
+                          const d = new Date(journalDate);
+                          const dateStr = `${d.getMonth() + 1}/${d.getDate()}`;
+                          return day.isoDate === journalDate || (!day.isoDate && day.date === dateStr);
+                        }
+                        if (!journalRangeFrom && !journalRangeTo) return true;
+                        if (!day.isoDate) return true;
+                        if (journalRangeFrom && day.isoDate < journalRangeFrom) return false;
+                        if (journalRangeTo && day.isoDate > journalRangeTo) return false;
+                        return true;
+                      });
+
+                      const dayContent = filteredDays.length === 0 ? (
+                        <div className="py-6 text-center text-sm text-[#b5a695]">（選定期間無 Daily Scrum 紀錄）</div>
+                      ) : journalType === 'daily' ? (
+                        <div className="space-y-3">
+                          {filteredDays.map((day, di) => {
+                            const activeEntries = day.entries.filter(e => e.q1 || e.q2 || e.q3);
+                            return (
+                              <div key={di}>
+                                <div className={`flex items-center gap-2 px-3 py-2 rounded-t-xl text-sm font-bold border border-b-0 ${day.done ? 'bg-[#e8eedd] text-[#3e6b47] border-[#8fb996]' : 'bg-[#f4f1ea] text-[#6b5e50] border-[#e8d5b5]'}`}>
+                                  <span>{day.done ? '✅' : '○'}</span>
+                                  <span>Day {day.idx + 1} / {sprint.totalDays}</span>
+                                  {day.date && <span className="font-normal text-[#8a7f72] ml-1">{day.date} ({day.dow})</span>}
+                                </div>
+                                {activeEntries.length === 0 ? (
+                                  <div className="px-3 py-4 text-xs text-[#b5a695] bg-[#fafaf7] border border-[#e8d5b5] rounded-b-xl">（本日站會完成，無文字記錄）</div>
+                                ) : (
+                                  <div className="bg-[#fafaf7] border border-[#e8d5b5] rounded-b-xl p-3 space-y-2.5">
+                                    {activeEntries.map((e, ei) => (
+                                      <div key={ei} className="bg-white border border-[#e8d5b5] rounded-xl p-3 shadow-sm">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <div className="w-7 h-7 rounded-full bg-[#5b755e] text-white flex items-center justify-center text-xs font-bold flex-shrink-0">{e.name.charAt(0)}</div>
+                                          <span className="font-bold text-sm text-[#3e362e]">{e.name}</span>
+                                          {e.role && <span className="text-xs bg-[#f4f1ea] text-[#6b5e50] px-2 py-0.5 rounded-full border border-[#d3cbbd]">{e.role}</span>}
+                                        </div>
+                                        <div className="space-y-1.5 pl-1">
+                                          {e.q1 && (
+                                            <div className="flex gap-2">
+                                              <span className="flex-shrink-0 text-[10px] font-bold bg-[#e8f5e9] text-[#2e7d32] border border-[#a5d6a7] px-1.5 py-0.5 rounded mt-0.5">昨天</span>
+                                              <span className="text-xs text-[#3e362e] leading-relaxed whitespace-pre-wrap">{e.q1}</span>
+                                            </div>
+                                          )}
+                                          {e.q2 && (
+                                            <div className="flex gap-2">
+                                              <span className="flex-shrink-0 text-[10px] font-bold bg-[#e3f2fd] text-[#1565c0] border border-[#90caf9] px-1.5 py-0.5 rounded mt-0.5">今天</span>
+                                              <span className="text-xs text-[#3e362e] leading-relaxed whitespace-pre-wrap">{e.q2}</span>
+                                            </div>
+                                          )}
+                                          {e.q3 && (
+                                            <div className="flex gap-2">
+                                              <span className="flex-shrink-0 text-[10px] font-bold bg-[#fff3e0] text-[#e65100] border border-[#ffcc80] px-1.5 py-0.5 rounded mt-0.5">阻礙</span>
+                                              <span className="text-xs text-[#3e362e] leading-relaxed whitespace-pre-wrap">{e.q3}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        /* 週報：按週分組 */
+                        (() => {
+                          const maxIdx = Math.max(...filteredDays.map(d => d.idx));
+                          const numWeeks = Math.ceil((maxIdx + 1) / 7);
+                          return (
+                            <div className="space-y-3">
+                              {Array.from({ length: numWeeks }, (_, w) => {
+                                const weekDays = filteredDays.filter(d => d.idx >= w * 7 && d.idx < (w + 1) * 7);
+                                if (weekDays.length === 0) return null;
+                                const wStart = weekDays[0]; const wEnd = weekDays[weekDays.length - 1];
+                                const wRange = wStart.date ? `${wStart.date} (${wStart.dow}) — ${wEnd.date} (${wEnd.dow})` : `Day ${w*7+1} — Day ${Math.min((w+1)*7, maxIdx+1)}`;
+                                const personNames = Array.from(new Set(weekDays.flatMap(d => d.entries.map(e => e.name))));
+                                return (
+                                  <div key={w} className="border border-[#d3cbbd] rounded-xl overflow-hidden">
+                                    <div className="bg-[#d3cbbd] text-[#3e362e] px-3 py-2 font-bold text-xs flex items-center gap-2">
+                                      <span>📅</span>
+                                      <span>第 {w + 1} 週</span>
+                                      <span className="font-normal text-[#6b5e50]">{wRange}</span>
+                                    </div>
+                                    <div className="p-3 space-y-2.5 bg-[#fafaf7]">
+                                      {personNames.map(name => {
+                                        const pDays = weekDays
+                                          .map(d => ({ ...d, e: d.entries.find(e => e.name === name) || { name, role: '', q1: '', q2: '', q3: '' } }))
+                                          .filter(d => d.e.q1 || d.e.q2 || d.e.q3);
+                                        if (pDays.length === 0) return null;
+                                        const personRole = pDays[0]?.e?.role || '';
+                                        const accs = pDays.filter(d => d.e.q1);
+                                        const lastQ2 = [...pDays].reverse().find(d => d.e.q2);
+                                        const imps = pDays.filter(d => d.e.q3 && d.e.q3 !== '無');
+                                        return (
+                                          <div key={name} className="bg-white border border-[#e8d5b5] rounded-xl p-3 shadow-sm">
+                                            <div className="flex items-center gap-2 mb-2.5">
+                                              <div className="w-7 h-7 rounded-full bg-[#5b755e] text-white flex items-center justify-center text-xs font-bold flex-shrink-0">{name.charAt(0)}</div>
+                                              <span className="font-bold text-sm text-[#3e362e]">{name}</span>
+                                              {personRole && <span className="text-xs bg-[#f4f1ea] text-[#6b5e50] px-2 py-0.5 rounded-full border border-[#d3cbbd]">{personRole}</span>}
+                                            </div>
+                                            <div className="space-y-2 pl-1">
+                                              {accs.length > 0 && (
+                                                <div>
+                                                  <div className="text-[10px] font-bold text-[#2e7d32] mb-1">📝 本週完成</div>
+                                                  <div className="space-y-1">
+                                                    {accs.map((d, ai) => (
+                                                      <div key={ai} className="text-xs text-[#3e362e] bg-[#f1f8f1] border border-[#c8e6c9] rounded-lg px-2 py-1 flex gap-2">
+                                                        {d.date && <span className="flex-shrink-0 text-[#5b755e] font-medium">{d.date} ({d.dow})</span>}
+                                                        <span className="whitespace-pre-wrap">{d.e.q1}</span>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              )}
+                                              {lastQ2 && (
+                                                <div className="text-xs bg-[#e3f2fd] border border-[#90caf9] rounded-lg px-2 py-1.5">
+                                                  <div className="text-[10px] font-bold text-[#1565c0] mb-0.5">🎯 下週計劃</div>
+                                                  <span className="text-[#3e362e] whitespace-pre-wrap">{lastQ2.e.q2}</span>
+                                                </div>
+                                              )}
+                                              {imps.length > 0 ? (
+                                                <div>
+                                                  <div className="text-[10px] font-bold text-[#e65100] mb-1">⚠️ 本週阻礙</div>
+                                                  <div className="space-y-1">
+                                                    {imps.map((d, ii) => (
+                                                      <div key={ii} className="text-xs text-[#3e362e] bg-[#fff3e0] border border-[#ffcc80] rounded-lg px-2 py-1 flex gap-2">
+                                                        {d.date && <span className="flex-shrink-0 text-[#e65100] font-medium">{d.date} ({d.dow})</span>}
+                                                        <span className="whitespace-pre-wrap">{d.e.q3}</span>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              ) : (
+                                                <div className="text-xs text-[#b5a695] bg-[#f4f1ea] border border-[#e8d5b5] rounded-lg px-2 py-1.5">⚠️ 本週阻礙：無</div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()
+                      );
+
+                      return (
+                        <div key={si} className="mb-4 border-2 border-[#5b755e] rounded-2xl overflow-hidden shadow-sm">
+                          <div className="bg-[#5b755e] text-white px-4 py-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-bold text-sm">{sprint.name}</span>
+                              <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">{sprint.completionPct}% 完成</span>
+                            </div>
+                            <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
+                              <div className="h-full bg-white rounded-full" style={{ width: `${sprint.completionPct}%` }} />
+                            </div>
+                          </div>
+                          {sprint.goal && (
+                            <div className="bg-[#f4f1ea] border-b border-[#e8d5b5] px-4 py-2 text-xs text-[#6b5e50]">
+                              🎯 <span className="font-bold">Sprint Goal：</span>{sprint.goal}
+                            </div>
+                          )}
+                          <div className="p-3">{dayContent}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
               <div className="px-4 pb-4 flex-shrink-0 text-center text-xs text-[#b5a695]">
-                點擊文字區域可全選，或使用上方「複製」
+                使用上方「複製」可取得純文字版本，方便貼到 LINE 或其他通訊工具
               </div>
             </div>
           </div>
