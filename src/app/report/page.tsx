@@ -808,7 +808,7 @@ export default function ReportPage() {
 
   return (
     <main className="min-h-screen bg-[#f4f1ea] font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')] print:bg-white print:bg-none">
-      <div className="max-w-[900px] mx-auto p-6 md:p-10 space-y-10">
+      <div className="w-full p-6 md:p-10 space-y-10">
 
         {/* 操作列 */}
         <div className="space-y-3 print:hidden">
