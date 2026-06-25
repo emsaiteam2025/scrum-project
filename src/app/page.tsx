@@ -602,18 +602,22 @@ export default function SprintList() {
     fetchDashboard();
   }, [sprints, loading, user]);
 
-  // 判斷某 Sprint 是否「進行中」（優先使用日期範圍，再 fallback 任務狀態）
+  // 判斷某 Sprint 是否「進行中」
+  // 優先順序：① 明確的 sprintStatus → ② 有 doing 任務 → ③ 日期範圍內 → ④ 有任務但未全完成
   const isSprintInProgress = (s: Sprint): boolean => {
     if (s.sprintStatus === 'in-progress') return true;
     if (s.sprintStatus === 'completed' || s.sprintStatus === 'pending') return false;
     const d = dashboards[s.id];
-    const today = new Date().toISOString().slice(0, 10);
-    if (d?.startDate && d?.endDate) return today >= d.startDate && today <= d.endDate;
     const total = d?.totalTasks ?? 0;
     if (total === 0) return false;
     const td = d?.todo ?? 0;
     const dg = d?.doing ?? 0;
-    return !(td === 0 && dg === 0);
+    if (td === 0 && dg === 0) return false; // 全部已完成
+    if (dg > 0) return true;               // 有任務進行中，確定是進行中
+    // 全為 todo：用日期範圍輔助判斷
+    const today = new Date().toISOString().slice(0, 10);
+    if (d?.startDate && d?.endDate) return today >= d.startDate && today <= d.endDate;
+    return true; // 有未完成任務但無日期，視為進行中
   };
 
   // 預設勾選「進行中」Sprint
