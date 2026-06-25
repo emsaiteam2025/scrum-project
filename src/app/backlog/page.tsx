@@ -776,9 +776,11 @@ export default function Backlog() {
                   while (c <= to) { const d = c.getDay(); const iso = c.toISOString().slice(0,10); if (d!==0&&d!==6&&!hdSet.has(iso)) n++; c.setDate(c.getDate()+1); }
                   return n;
                 };
+                const sprintEnd = new Date(start); sprintEnd.setDate(sprintEnd.getDate() + total - 1);
+                const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
                 const elapsed = countWD(start, today);
-                const remaining = Math.max(0, total - elapsed);
-                const isOverdue = elapsed > total;
+                const isOverdue = today > sprintEnd;
+                const remaining = isOverdue ? 0 : countWD(tomorrow, sprintEnd);
                 return (
                   <div className={`mt-1 rounded-xl px-3 py-2 text-xs font-bold border-2 text-center ${
                     isOverdue ? 'bg-[#fceded] border-[#e6b1b1] text-[#c96262]'
@@ -786,8 +788,8 @@ export default function Backlog() {
                     : 'bg-[#e8eedd] border-[#8fb996] text-[#4a7c59]'
                   }`}>
                     {isOverdue
-                      ? `⚠️ 已超出 ${elapsed - total} 天`
-                      : <>第 {Math.min(elapsed, total)} 天 / 共 {total} 天<br/><span className="text-base font-black">還剩 {remaining} 天</span></>
+                      ? `⚠️ 已超出 Sprint 期限`
+                      : <>第 {elapsed} 工作天 / 共 {total} 天<br/><span className="text-base font-black">還剩 {remaining} 工作天</span></>
                     }
                   </div>
                 );

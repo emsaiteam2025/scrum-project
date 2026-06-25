@@ -38,13 +38,21 @@ export default function DailyScrum() {
     dailyNotes: {} as Record<number, string>,
     dailyNotesQ1: {} as Record<number, string>,
     dailyNotesQ2: {} as Record<number, string>,
-    dailyNotesQ3: {} as Record<number, string>
+    dailyNotesQ3: {} as Record<number, string>,
+    leaveStatus: {} as Record<number, string[]>
   });
 
   const dailyNotes = data.dailyNotes || {};
   const dailyNotesQ1 = data.dailyNotesQ1 || {};
   const dailyNotesQ2 = data.dailyNotesQ2 || {};
   const dailyNotesQ3 = data.dailyNotesQ3 || {};
+  const leaveStatus: Record<number, string[]> = (data as Record<string, unknown>).leaveStatus as Record<number, string[]> || {};
+  const isOnLeave = (dayIdx: number, name: string) => (leaveStatus[dayIdx] || []).includes(name);
+  const toggleLeave = (dayIdx: number, name: string) => {
+    const current = leaveStatus[dayIdx] || [];
+    const next = current.includes(name) ? current.filter((n: string) => n !== name) : [...current, name];
+    updateData({ leaveStatus: { ...leaveStatus, [dayIdx]: next } });
+  };
   const [activeDay, setActiveDay] = useState<number | null>(null);
   const [collapsedPrevDays, setCollapsedPrevDays] = useState<Set<number>>(new Set());
   const togglePrevDay = (day: number) => setCollapsedPrevDays(prev => {
@@ -328,9 +336,11 @@ export default function DailyScrum() {
               }
               const today = new Date(); today.setHours(0,0,0,0);
               const start = new Date(sprintStartDate); start.setHours(0,0,0,0);
+              const sprintEnd = new Date(start); sprintEnd.setDate(sprintEnd.getDate() + total - 1);
+              const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
               const elapsed = countWorkDays(start, today);
-              const remaining = Math.max(0, total - elapsed);
-              const isOverdue = elapsed > total;
+              const isOverdue = today > sprintEnd;
+              const remaining = isOverdue ? 0 : countWorkDays(tomorrow, sprintEnd);
               return (
                 <div className={`p-4 rounded-xl shadow-inner font-bold flex items-center gap-3 md:w-64 justify-center border-2 ${
                   isOverdue ? 'bg-[#fceded] border-[#e6b1b1] text-[#c96262]'
@@ -340,8 +350,8 @@ export default function DailyScrum() {
                   <span className="text-3xl">📅</span>
                   <div>
                     {isOverdue
-                      ? <><div className="text-base">⚠️ 已超出 {elapsed - total} 天</div><div className="text-xs font-medium mt-0.5">共 {total} 天 Sprint</div></>
-                      : <><div className="text-base font-black">還剩 {remaining} 天</div><div className="text-xs font-medium mt-0.5">第 {Math.min(elapsed, total)} 天 / 共 {total} 天</div></>
+                      ? <><div className="text-base">⚠️ 已超出期限</div><div className="text-xs font-medium mt-0.5">共 {total} 天 Sprint</div></>
+                      : <><div className="text-base font-black">還剩 {remaining} 工作天</div><div className="text-xs font-medium mt-0.5">第 {elapsed} 工作天 / 共 {total} 天</div></>
                     }
                   </div>
                 </div>
@@ -483,9 +493,11 @@ export default function DailyScrum() {
               const today = new Date(); today.setHours(0,0,0,0);
               const start = new Date(sprintStartDate); start.setHours(0,0,0,0);
               const total = Number(sprintDays) || 0;
+              const sprintEnd = new Date(start); sprintEnd.setDate(sprintEnd.getDate() + total - 1);
+              const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
               const elapsed = countWorkDays(start, today);
-              const remaining = Math.max(0, total - elapsed);
-              const isOverdue = elapsed > total;
+              const isOverdue = today > sprintEnd;
+              const remaining = isOverdue ? 0 : countWorkDays(tomorrow, sprintEnd);
               return (
                 <div className={`text-sm font-bold px-4 py-1.5 rounded-xl border-2 whitespace-nowrap ${
                   isOverdue ? 'bg-[#c96262]/90 border-white/40 text-white'
@@ -493,8 +505,8 @@ export default function DailyScrum() {
                   : 'bg-white/25 border-white/40 text-white'
                 }`}>
                   {isOverdue
-                    ? `⚠️ 已超出 ${elapsed - total} 天`
-                    : `第 ${Math.min(elapsed, total)} 天｜還剩 ${remaining} 天`}
+                    ? `⚠️ 已超出期限`
+                    : `第 ${elapsed} 工作天｜還剩 ${remaining} 工作天`}
                 </div>
               );
             })()}
@@ -548,7 +560,12 @@ export default function DailyScrum() {
                     <div className={`text-3xl mt-2 z-10 transition-all ${isChecked ? 'opacity-100 scale-125' : 'opacity-50 group-hover:opacity-100'}`}>
                       {isChecked ? '✅' : holiday ? '🎌' : '🌱'}
                     </div>
-                    
+                    {(leaveStatus[i] || []).length > 0 && (
+                      <div className="text-[10px] font-bold bg-[#fff4c2] text-[#7a5c00] border border-[#f0c060] px-1.5 py-0.5 rounded-full mt-1 z-10">
+                        🏖 {(leaveStatus[i] || []).length}人請假
+                      </div>
+                    )}
+
                     {/* 點擊時的波紋效果背景 */}
                     <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-20 transition-opacity"></div>
                     
@@ -568,6 +585,37 @@ export default function DailyScrum() {
                         {holiday && <span className="text-sm font-bold bg-[#fbe9c0] text-[#7a4f1a] border border-[#e8c98a] px-2 py-0.5 rounded-full">🎌 {holiday.name}</span>}
                       </h3>
                       <div className="flex flex-col gap-5">
+                        {/* 出席狀況 */}
+                        {devNames.length > 0 && (
+                          <div className="bg-[#f4f1ea] border-2 border-[#d3cbbd] rounded-xl p-4">
+                            <div className="text-xs font-bold text-[#8a7f72] mb-3 flex items-center gap-1.5">
+                              <span>👥</span> 今日出席狀況 <span className="font-normal text-[#b5a695]">（點擊切換請假/出席）</span>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {devNames.map(name => {
+                                const onLeave = isOnLeave(i, name);
+                                return (
+                                  <button
+                                    key={name}
+                                    onClick={() => toggleLeave(i, name)}
+                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 font-bold text-sm transition-all ${
+                                      onLeave
+                                        ? 'bg-[#fff4c2] border-[#f0c060] text-[#7a5c00]'
+                                        : 'bg-[#e8eedd] border-[#8fb996] text-[#4a7c59] hover:bg-[#dcedc1]'
+                                    }`}
+                                  >
+                                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] text-white font-bold shrink-0 ${onLeave ? 'bg-[#b5a695]' : 'bg-[#5b755e]'}`}>
+                                      {name.charAt(0)}
+                                    </span>
+                                    <span>{name}</span>
+                                    <span className="text-xs">{onLeave ? '🏖 請假' : '✅ 出席'}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
                         {/* 舊版單一文字紀錄（保留顯示） */}
                         {dailyNotes[i] && !dailyNotesQ1[i] && !dailyNotesQ2[i] && !dailyNotesQ3[i] && (
                           <div className="bg-[#fffdf9] p-3 border-2 border-dashed border-[#d4a373] rounded-lg text-sm text-[#8b5a2b] whitespace-pre-wrap">
@@ -646,23 +694,30 @@ export default function DailyScrum() {
                               {devNames.length > 0 ? (
                                 /* 有開發人員名單：逐人一行 */
                                 <div className="space-y-2">
-                                  {devNames.map(name => (
-                                    <div key={name} className="flex items-start gap-2">
-                                      <div className="flex items-center gap-1.5 w-20 shrink-0 pt-2.5">
-                                        <div className="w-6 h-6 rounded-full bg-[#5b755e] text-white flex items-center justify-center text-xs font-bold shrink-0">
-                                          {name.charAt(0)}
+                                  {devNames.map(name => {
+                                    const onLeave = isOnLeave(i, name);
+                                    return (
+                                      <div key={name} className={`flex items-start gap-2 ${onLeave ? 'opacity-50' : ''}`}>
+                                        <div className="flex items-center gap-1.5 w-20 shrink-0 pt-2.5">
+                                          <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center text-xs font-bold shrink-0 ${onLeave ? 'bg-[#b5a695]' : 'bg-[#5b755e]'}`}>
+                                            {name.charAt(0)}
+                                          </div>
+                                          <span className="text-xs font-bold text-[#3e362e] truncate">{name}</span>
                                         </div>
-                                        <span className="text-xs font-bold text-[#3e362e] truncate">{name}</span>
+                                        {onLeave ? (
+                                          <div className="flex-1 py-2.5 px-3 text-xs text-[#b5a695] italic border-2 border-dashed border-[#d3cbbd] rounded-xl bg-[#f9f7f4]">🏖 本日請假</div>
+                                        ) : (
+                                          <AutoGrowTextarea
+                                            value={getPersonNote(notes, i, name)}
+                                            onChange={e => updatePersonNote(i, q.key, name, e.target.value)}
+                                            placeholder={q.ph(name)}
+                                            rows={2}
+                                            className={`flex-1 p-2.5 border-2 ${q.borderCls} rounded-xl focus:outline-none focus:ring-4 ${q.ringCls} bg-white text-[#3e362e] resize-none overflow-hidden shadow-inner text-sm`}
+                                          />
+                                        )}
                                       </div>
-                                      <AutoGrowTextarea
-                                        value={getPersonNote(notes, i, name)}
-                                        onChange={e => updatePersonNote(i, q.key, name, e.target.value)}
-                                        placeholder={q.ph(name)}
-                                        rows={2}
-                                        className={`flex-1 p-2.5 border-2 ${q.borderCls} rounded-xl focus:outline-none focus:ring-4 ${q.ringCls} bg-white text-[#3e362e] resize-none overflow-hidden shadow-inner text-sm`}
-                                      />
-                                    </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               ) : (
                                 /* 無開發人員名單：單一文字區 */
