@@ -430,8 +430,30 @@ export default function DailyScrum() {
 
         {/* 動態天數打卡追蹤 */}
         <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden">
-          <div className="bg-[#8fb996] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white tracking-wider flex items-center gap-2 drop-shadow-sm">
-            <span>📅</span> {sprintDays} 天進度追蹤 (D1 - D{sprintDays})
+          <div className="bg-[#8fb996] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white tracking-wider flex items-center justify-between gap-2 drop-shadow-sm flex-wrap">
+            <div className="flex items-center gap-2">
+              <span>📅</span> {sprintDays} 天進度追蹤 (D1 - D{sprintDays})
+            </div>
+            {(() => {
+              if (!sprintStartDate) return null;
+              const today = new Date(); today.setHours(0,0,0,0);
+              const start = new Date(sprintStartDate); start.setHours(0,0,0,0);
+              const elapsed = Math.floor((today.getTime() - start.getTime()) / 86400000) + 1;
+              const total = Number(sprintDays) || 0;
+              const remaining = Math.max(0, total - elapsed);
+              const isOverdue = elapsed > total;
+              return (
+                <div className={`text-sm font-bold px-4 py-1.5 rounded-xl border-2 whitespace-nowrap ${
+                  isOverdue ? 'bg-[#c96262]/90 border-white/40 text-white'
+                  : remaining <= 3 ? 'bg-[#f0c060]/90 border-white/40 text-[#3e362e]'
+                  : 'bg-white/25 border-white/40 text-white'
+                }`}>
+                  {isOverdue
+                    ? `⚠️ 已超出 ${elapsed - total} 天`
+                    : `第 ${Math.min(elapsed, total)} 天｜還剩 ${remaining} 天`}
+                </div>
+              );
+            })()}
           </div>
           
           <div className="p-6">

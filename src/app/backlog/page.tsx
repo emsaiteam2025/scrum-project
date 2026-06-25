@@ -27,6 +27,7 @@ export default function Backlog() {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isPhotoRestoring, setIsPhotoRestoring] = useState(false);
   const [poName, setPoName] = useState<string>('');
+  const [sprintStartDate, setSprintStartDate] = useState<string>('');
   const [mobileStatusFilter, setMobileStatusFilter] = useState<'all' | 'todo' | 'doing' | 'done'>('all');
   // 日期字串只在 client 端產生，避免 server/client 對 toLocaleDateString 結果不一致造成 hydration 錯誤
   const [dateLabel, setDateLabel] = useState<string>('');
@@ -214,8 +215,9 @@ export default function Backlog() {
         const { doc, getDoc } = await import('firebase/firestore');
         const { db } = await import('@/lib/firebase');
         const snap = await getDoc(doc(db, 'sprints', sprintId));
-        if (snap.exists() && snap.data().planning?.po) {
-          setPoName(snap.data().planning.po);
+        if (snap.exists()) {
+          if (snap.data().planning?.po) setPoName(snap.data().planning.po);
+          if (snap.data().planning?.startDate) setSprintStartDate(snap.data().planning.startDate);
         }
       } catch {}
     };
@@ -741,7 +743,7 @@ export default function Backlog() {
                 onChange={e => updateData({ sprintGoal: e.target.value })}
               />
             </div>
-            <div className="flex flex-col gap-2 relative md:w-40">
+            <div className="flex flex-col gap-2 relative md:w-48">
               <label className="font-bold text-lg text-[#6b5e50]">週期（天）</label>
               <input
                 type="number"
@@ -757,6 +759,28 @@ export default function Backlog() {
                   {errorMsg}
                 </div>
               )}
+              {/* 剩餘天數顯示 */}
+              {(() => {
+                if (!sprintStartDate) return null;
+                const today = new Date(); today.setHours(0,0,0,0);
+                const start = new Date(sprintStartDate); start.setHours(0,0,0,0);
+                const elapsed = Math.floor((today.getTime() - start.getTime()) / 86400000) + 1;
+                const total = Number(sprintDays) || 0;
+                const remaining = Math.max(0, total - elapsed);
+                const isOverdue = elapsed > total;
+                return (
+                  <div className={`mt-1 rounded-xl px-3 py-2 text-xs font-bold border-2 text-center ${
+                    isOverdue ? 'bg-[#fceded] border-[#e6b1b1] text-[#c96262]'
+                    : remaining <= 3 ? 'bg-[#fff4c2] border-[#f0c060] text-[#7a5c00]'
+                    : 'bg-[#e8eedd] border-[#8fb996] text-[#4a7c59]'
+                  }`}>
+                    {isOverdue
+                      ? `⚠️ 已超出 ${elapsed - total} 天`
+                      : <>第 {Math.min(elapsed, total)} 天 / 共 {total} 天<br/><span className="text-base font-black">還剩 {remaining} 天</span></>
+                    }
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </section>
