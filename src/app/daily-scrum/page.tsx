@@ -110,6 +110,19 @@ export default function DailyScrum() {
 
   const WEEKDAYS = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
 
+  const holidayDateSet = new Set(holidays.map(h => h.date));
+  const countWorkDays = (from: Date, to: Date): number => {
+    let count = 0;
+    const cur = new Date(from);
+    while (cur <= to) {
+      const d = cur.getDay();
+      const iso = cur.toISOString().slice(0, 10);
+      if (d !== 0 && d !== 6 && !holidayDateSet.has(iso)) count++;
+      cur.setDate(cur.getDate() + 1);
+    }
+    return count;
+  };
+
   const getDayDate = (dayIndex: number): string => {
     if (!sprintStartDate) return '';
     const base = new Date(sprintStartDate);
@@ -315,7 +328,7 @@ export default function DailyScrum() {
               }
               const today = new Date(); today.setHours(0,0,0,0);
               const start = new Date(sprintStartDate); start.setHours(0,0,0,0);
-              const elapsed = Math.floor((today.getTime() - start.getTime()) / 86400000) + 1;
+              const elapsed = countWorkDays(start, today);
               const remaining = Math.max(0, total - elapsed);
               const isOverdue = elapsed > total;
               return (
@@ -469,8 +482,8 @@ export default function DailyScrum() {
               if (!sprintStartDate) return null;
               const today = new Date(); today.setHours(0,0,0,0);
               const start = new Date(sprintStartDate); start.setHours(0,0,0,0);
-              const elapsed = Math.floor((today.getTime() - start.getTime()) / 86400000) + 1;
               const total = Number(sprintDays) || 0;
+              const elapsed = countWorkDays(start, today);
               const remaining = Math.max(0, total - elapsed);
               const isOverdue = elapsed > total;
               return (

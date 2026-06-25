@@ -28,6 +28,7 @@ export default function Backlog() {
   const [isPhotoRestoring, setIsPhotoRestoring] = useState(false);
   const [poName, setPoName] = useState<string>('');
   const [sprintStartDate, setSprintStartDate] = useState<string>('');
+  const [holidays, setHolidays] = useState<{ id: string; date: string; name: string }[]>([]);
   const [mobileStatusFilter, setMobileStatusFilter] = useState<'all' | 'todo' | 'doing' | 'done'>('all');
   // 日期字串只在 client 端產生，避免 server/client 對 toLocaleDateString 結果不一致造成 hydration 錯誤
   const [dateLabel, setDateLabel] = useState<string>('');
@@ -182,6 +183,10 @@ export default function Backlog() {
   useEffect(() => {
     const savedKey = localStorage.getItem('openai_api_key');
     if (savedKey) setApiKey(savedKey);
+    try {
+      const raw = localStorage.getItem('orgHolidays');
+      if (raw) setHolidays(JSON.parse(raw));
+    } catch {}
   }, []);
 
   // 從 localStorage 載入已刪除的 PBI ID，避免 Planning 同步重新加回
@@ -764,8 +769,14 @@ export default function Backlog() {
                 if (!sprintStartDate) return null;
                 const today = new Date(); today.setHours(0,0,0,0);
                 const start = new Date(sprintStartDate); start.setHours(0,0,0,0);
-                const elapsed = Math.floor((today.getTime() - start.getTime()) / 86400000) + 1;
                 const total = Number(sprintDays) || 0;
+                const hdSet = new Set(holidays.map(h => h.date));
+                const countWD = (from: Date, to: Date) => {
+                  let n = 0; const c = new Date(from);
+                  while (c <= to) { const d = c.getDay(); const iso = c.toISOString().slice(0,10); if (d!==0&&d!==6&&!hdSet.has(iso)) n++; c.setDate(c.getDate()+1); }
+                  return n;
+                };
+                const elapsed = countWD(start, today);
                 const remaining = Math.max(0, total - elapsed);
                 const isOverdue = elapsed > total;
                 return (
