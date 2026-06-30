@@ -645,52 +645,63 @@ export default function DailyScrum() {
                         )}
 
                         {/* 前一天唯讀紀錄 */}
-                        {i > 0 && (
-                          <div className="bg-[#f4f1ea] border-2 border-dashed border-[#c9b99a] rounded-xl p-4">
-                            <button
-                              onClick={() => togglePrevDay(i)}
-                              className="w-full text-xs font-bold text-[#8a7f72] flex items-center gap-1.5 hover:text-[#6b5e50] transition-colors"
-                            >
-                              <span>📖</span>
-                              <span>Day {i}（前一天）紀錄參考</span>
-                              <span className="ml-auto text-[#b5a695] font-normal">{collapsedPrevDays.has(i) ? '▶ 展開' : '▼ 收合'}</span>
-                            </button>
-                            {!collapsedPrevDays.has(i) && (
-                              <div className="mt-3">
-                                {([
-                                  { key: 'Q1' as const, label: '上一個工作日完成了什麼？', notes: dailyNotesQ1 },
-                                  { key: 'Q2' as const, label: '今天預計要做什麼？', notes: dailyNotesQ2 },
-                                  { key: 'Q3' as const, label: '遇到的阻礙？', notes: dailyNotesQ3 },
-                                ]).map(q => {
-                                  const prevNotes = (q.notes as Record<number, unknown>)[i - 1];
-                                  if (!prevNotes) return null;
-                                  const isObj = typeof prevNotes === 'object';
-                                  const lines: { name: string; text: string }[] = isObj
-                                    ? devNames.map(n => ({ name: n, text: (prevNotes as Record<string, string>)[n] || '' })).filter(l => l.text)
-                                    : typeof prevNotes === 'string' && prevNotes ? [{ name: '', text: prevNotes as string }] : [];
-                                  if (lines.length === 0) return null;
-                                  return (
-                                    <div key={q.key} className="mb-2 last:mb-0">
-                                      <div className="text-[10px] font-bold text-[#b5a695] mb-1">{q.label}</div>
-                                      <div className="space-y-1">
-                                        {lines.map(l => (
-                                          <div key={l.name} className="flex items-start gap-2">
-                                            {l.name && (
-                                              <div className="w-5 h-5 rounded-full bg-[#b5a695] text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                                                {l.name.charAt(0)}
-                                              </div>
-                                            )}
-                                            <div className="text-xs text-[#6b5e50] bg-white/70 px-2 py-1 rounded-lg flex-1 whitespace-pre-wrap">{l.text}</div>
-                                          </div>
-                                        ))}
+                        {(() => {
+                          // 往前找到最後一個有記錄的工作日
+                          let refDay = i - 1;
+                          while (refDay >= 0) {
+                            const hasRecord =
+                              dailyNotesQ1[refDay] || dailyNotesQ2[refDay] || dailyNotesQ3[refDay] || dailyNotes[refDay];
+                            if (hasRecord) break;
+                            refDay--;
+                          }
+                          if (refDay < 0) return null;
+                          return (
+                            <div className="bg-[#f4f1ea] border-2 border-dashed border-[#c9b99a] rounded-xl p-4">
+                              <button
+                                onClick={() => togglePrevDay(i)}
+                                className="w-full text-xs font-bold text-[#8a7f72] flex items-center gap-1.5 hover:text-[#6b5e50] transition-colors"
+                              >
+                                <span>📖</span>
+                                <span>Day {refDay + 1}（前一個工作日）紀錄參考</span>
+                                <span className="ml-auto text-[#b5a695] font-normal">{collapsedPrevDays.has(i) ? '▶ 展開' : '▼ 收合'}</span>
+                              </button>
+                              {!collapsedPrevDays.has(i) && (
+                                <div className="mt-3">
+                                  {([
+                                    { key: 'Q1' as const, label: '上一個工作日完成了什麼？', notes: dailyNotesQ1 },
+                                    { key: 'Q2' as const, label: '今天預計要做什麼？', notes: dailyNotesQ2 },
+                                    { key: 'Q3' as const, label: '遇到的阻礙？', notes: dailyNotesQ3 },
+                                  ]).map(q => {
+                                    const prevNotes = (q.notes as Record<number, unknown>)[refDay];
+                                    if (!prevNotes) return null;
+                                    const isObj = typeof prevNotes === 'object';
+                                    const lines: { name: string; text: string }[] = isObj
+                                      ? devNames.map(n => ({ name: n, text: (prevNotes as Record<string, string>)[n] || '' })).filter(l => l.text)
+                                      : typeof prevNotes === 'string' && prevNotes ? [{ name: '', text: prevNotes as string }] : [];
+                                    if (lines.length === 0) return null;
+                                    return (
+                                      <div key={q.key} className="mb-2 last:mb-0">
+                                        <div className="text-[10px] font-bold text-[#b5a695] mb-1">{q.label}</div>
+                                        <div className="space-y-1">
+                                          {lines.map(l => (
+                                            <div key={l.name} className="flex items-start gap-2">
+                                              {l.name && (
+                                                <div className="w-5 h-5 rounded-full bg-[#b5a695] text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                                                  {l.name.charAt(0)}
+                                                </div>
+                                              )}
+                                              <div className="text-xs text-[#6b5e50] bg-white/70 px-2 py-1 rounded-lg flex-1 whitespace-pre-wrap">{l.text}</div>
+                                            </div>
+                                          ))}
+                                        </div>
                                       </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         {/* 三個問題 */}
                         {([
