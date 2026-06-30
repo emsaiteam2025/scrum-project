@@ -658,7 +658,7 @@ export default function DailyScrum() {
                             {!collapsedPrevDays.has(i) && (
                               <div className="mt-3">
                                 {([
-                                  { key: 'Q1' as const, label: '昨天完成了什麼？', notes: dailyNotesQ1 },
+                                  { key: 'Q1' as const, label: '上一個工作日完成了什麼？', notes: dailyNotesQ1 },
                                   { key: 'Q2' as const, label: '今天預計要做什麼？', notes: dailyNotesQ2 },
                                   { key: 'Q3' as const, label: '遇到的阻礙？', notes: dailyNotesQ3 },
                                 ]).map(q => {
@@ -694,7 +694,7 @@ export default function DailyScrum() {
 
                         {/* 三個問題 */}
                         {([
-                          { key: 'Q1' as const, icon: '🔄', label: '1. 昨天完成了什麼？', borderCls: 'border-[#a5c2a8]', ringCls: 'focus:ring-[#8fb996]/50', labelCls: 'text-[#5b755e]', ph: (n: string) => `${n}昨日進展...` },
+                          { key: 'Q1' as const, icon: '🔄', label: '1. 上一個工作日完成了什麼？', borderCls: 'border-[#a5c2a8]', ringCls: 'focus:ring-[#8fb996]/50', labelCls: 'text-[#5b755e]', ph: (n: string) => `${n}昨日進展...` },
                           { key: 'Q2' as const, icon: '🎯', label: '2. 今天預計要做什麼？', borderCls: 'border-[#a5c2a8]', ringCls: 'focus:ring-[#8fb996]/50', labelCls: 'text-[#5b755e]', ph: (n: string) => `${n}今日目標...` },
                           { key: 'Q3' as const, icon: '🚧', label: '3. 目前有沒有遇到任何阻礙？', borderCls: 'border-[#e6b1b1]', ringCls: 'focus:ring-[#e6b1b1]/50', labelCls: 'text-[#c96262]', ph: (n: string) => `${n}...` },
                         ]).map(q => {
@@ -798,7 +798,7 @@ export default function DailyScrum() {
       {imagePreviewDay !== null && (() => {
         const d = imagePreviewDay;
         const qDefs = [
-          { key: 'Q1' as const, icon: '🔄', label: '昨天完成了什麼？', notes: dailyNotesQ1, bg: '#f0f7f1', border: '#8fb996' },
+          { key: 'Q1' as const, icon: '🔄', label: '上一個工作日完成了什麼？', notes: dailyNotesQ1, bg: '#f0f7f1', border: '#8fb996' },
           { key: 'Q2' as const, icon: '🎯', label: '今天預計要做什麼？', notes: dailyNotesQ2, bg: '#f0f7f1', border: '#8fb996' },
           { key: 'Q3' as const, icon: '🚧', label: '遇到的阻礙？', notes: dailyNotesQ3, bg: '#fdf3f3', border: '#e6b1b1' },
         ];
