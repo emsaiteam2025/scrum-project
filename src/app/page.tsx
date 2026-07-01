@@ -1048,15 +1048,6 @@ export default function SprintList() {
     const today = new Date();
     // 用本地日期避免 UTC 偏移問題（台灣 UTC+8 在凌晨時 toISOString 會取到前一天）
     const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    // 找到所有 sprint 中最新有記錄的工作日（不超過今天），以此為預設日期
-    const allRecordDates = allData
-      .flatMap(s => s.days)
-      .filter(d => d.isoDate && d.isoDate <= todayIso && d.entries.some(e => e.q1 || e.q2 || e.q3))
-      .map(d => d.isoDate)
-      .sort();
-    const latestRecordDate = allRecordDates.length > 0
-      ? allRecordDates[allRecordDates.length - 1]
-      : todayIso;
     // 本週一～本週日（週一為週首）
     const dow = today.getDay(); // 0=日,1=一,...,6=六
     const diffToMon = dow === 0 ? -6 : 1 - dow;
@@ -1064,10 +1055,10 @@ export default function SprintList() {
     const friday = new Date(monday); friday.setDate(monday.getDate() + 4);
     const weekFrom = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
     const weekTo = `${friday.getFullYear()}-${String(friday.getMonth() + 1).padStart(2, '0')}-${String(friday.getDate()).padStart(2, '0')}`;
-    setJournalDate(latestRecordDate);
+    setJournalDate(todayIso);
     setJournalRangeFrom(weekFrom);
     setJournalRangeTo(weekTo);
-    setJournalDailyText(buildDailyText(raw, latestRecordDate));
+    setJournalDailyText(buildDailyText(raw, todayIso));
     setJournalWeeklyText(buildWeeklyText(raw, weekFrom, weekTo));
     setJournalLoading(false);
   };
