@@ -106,6 +106,49 @@ const categoryRange: Record<string, string> = {
   '技術與改善': '第 9–12 條',
 };
 
+const scrumValues = [
+  {
+    letter: 'C',
+    en: 'Commitment',
+    zh: '承諾',
+    desc: '團隊共同致力於實現目標。',
+    bg: 'bg-[#fff8f4]', border: 'border-[#f0c8a0]',
+    badge: 'bg-[#e07a5f] text-white', text: 'text-[#c06030]',
+  },
+  {
+    letter: 'C',
+    en: 'Courage',
+    zh: '勇氣',
+    desc: '敢於面對困難、挑戰現狀並做出改變。',
+    bg: 'bg-[#f4f9fd]', border: 'border-[#a0c8e8]',
+    badge: 'bg-[#3a7aaa] text-white', text: 'text-[#2a6080]',
+  },
+  {
+    letter: 'F',
+    en: 'Focus',
+    zh: '專注',
+    desc: '全神貫注於短衝（Sprint）目標及當前任務。',
+    bg: 'bg-[#f4fcf8]', border: 'border-[#a8d8b8]',
+    badge: 'bg-[#3a8f6a] text-white', text: 'text-[#2e7d5e]',
+  },
+  {
+    letter: 'O',
+    en: 'Openness',
+    zh: '開放',
+    desc: '對工作細節、挑戰保持透明與接納態度。',
+    bg: 'bg-[#f9f4fc]', border: 'border-[#c8a8d8]',
+    badge: 'bg-[#7a5aaa] text-white', text: 'text-[#604080]',
+  },
+  {
+    letter: 'R',
+    en: 'Respect',
+    zh: '尊重',
+    desc: '成員間彼此信任，認可各自的專業價值。',
+    bg: 'bg-[#fef9f4]', border: 'border-[#d8c0a0]',
+    badge: 'bg-[#8b5a2b] text-white', text: 'text-[#6b4020]',
+  },
+];
+
 const resources = [
   {
     icon: '📖',
@@ -152,7 +195,7 @@ const resources = [
 ];
 
 export default function KnowledgePage() {
-  const [tab, setTab] = useState<'agile' | 'resources'>('agile');
+  const [tab, setTab] = useState<'agile' | 'scrum-values' | 'resources'>('agile');
 
   return (
     <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
@@ -176,6 +219,16 @@ export default function KnowledgePage() {
               }`}
             >
               Agile 12 準則
+            </button>
+            <button
+              onClick={() => setTab('scrum-values')}
+              className={`px-5 py-2 text-sm font-bold border-b-2 transition-all -mb-[2px] ${
+                tab === 'scrum-values'
+                  ? 'border-[#3a7aaa] text-[#3a7aaa]'
+                  : 'border-transparent text-[#8a7f72] hover:text-[#5b755e]'
+              }`}
+            >
+              Scrum 核心價值
             </button>
             <button
               onClick={() => setTab('resources')}
@@ -225,6 +278,59 @@ export default function KnowledgePage() {
               Beck, K., et al. (2001). Manifesto for Agile Software Development. Retrieved from{' '}
               <a href="https://agilemanifesto.org/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#3a7aaa]">
                 https://agilemanifesto.org/
+              </a>
+            </p>
+          </div>
+        )}
+
+        {/* Scrum 五大核心價值觀 */}
+        {tab === 'scrum-values' && (
+          <div className="space-y-6">
+            {/* 說明卡 */}
+            <div className="bg-[#fffdf9] border-2 border-[#d3cbbd] rounded-2xl p-5">
+              <div className="text-base font-bold text-[#3e362e] mb-2">
+                「CCFOR」— Scrum 五大核心價值觀
+              </div>
+              <p className="text-sm text-[#6b5e50] leading-relaxed">
+                「<strong>CCFOR</strong>」是 Scrum 敏捷開發中至關重要的 <strong>五大核心價值觀</strong>，
+                這五個單字分別代表 Commitment（承諾）、Courage（勇氣）、Focus（專注）、
+                Openness（開放）、Respect（尊重）。這些價值觀是 Scrum 框架運作的基礎，
+                引導團隊成員在每一次短衝（Sprint）中建立信任、提升效能。
+              </p>
+            </div>
+
+            {/* CCFOR 字母橫排 */}
+            <div className="flex justify-center gap-3 flex-wrap">
+              {scrumValues.map((v, i) => (
+                <div key={i} className={`w-16 h-16 rounded-2xl flex items-center justify-center text-3xl font-black shrink-0 ${v.badge}`}>
+                  {v.letter}
+                </div>
+              ))}
+            </div>
+
+            {/* 五大價值卡片 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {scrumValues.map((v, i) => (
+                <div key={i} className={`rounded-2xl border-2 p-5 ${v.bg} ${v.border}`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg font-black shrink-0 ${v.badge}`}>
+                      {v.letter}
+                    </div>
+                    <div>
+                      <div className={`font-bold text-base leading-snug ${v.text}`}>
+                        {v.en} <span className="text-sm font-semibold">（{v.zh}）</span>
+                      </div>
+                      <div className="text-sm text-[#6b5e50] leading-relaxed mt-1.5">{v.desc}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs text-[#8a7f72] pt-2">
+              參考來源：The Scrum Guide (2020). Scrum Values. Retrieved from{' '}
+              <a href="https://scrumguides.org/scrum-guide.html" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#3a7aaa]">
+                https://scrumguides.org/scrum-guide.html
               </a>
             </p>
           </div>
