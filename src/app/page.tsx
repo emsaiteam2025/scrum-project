@@ -4,7 +4,10 @@ import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
 import { db } from '@/lib/firebase';
 import { collection, doc, getDocs, getDoc, setDoc, deleteDoc, query, where } from 'firebase/firestore';
-import { BookOpen, Settings, BarChart2, ClipboardList, Plus, Folder, Zap, CheckCircle2, Scale, LayoutGrid, Calendar, ChevronRight, RefreshCw } from 'lucide-react';
+import { BookOpen, Settings, BarChart2, ClipboardList, Plus, Folder, Zap, CheckCircle2, Scale, LayoutGrid, Calendar, ChevronRight, RefreshCw, Users, Target, X, Circle } from 'lucide-react';
+
+const AV_PAL = ['#C96442', '#4F7E5C', '#B8893A', '#467386', '#8B5A2B', '#5A574E'];
+const avColor = (name: string) => AV_PAL[name.split('').reduce((s, c) => s + c.charCodeAt(0), 0) % AV_PAL.length];
 
 interface Sprint {
   id: string;
@@ -1740,13 +1743,13 @@ export default function SprintList() {
                   <div className="space-y-1">
                     {/* 人員總負荷 */}
                     {journalRawRef.current && journalRawRef.current.loadLines.length > 0 && (
-                      <div className="mb-4 bg-[#e8eedd] border-2 border-[#8fb996] rounded-2xl p-3">
-                        <div className="text-xs font-bold text-[#3e6b47] mb-2 flex items-center gap-1.5">
-                          <span>👥</span> 人員總負荷
+                      <div className="mb-4 bg-[#F6F3EB] border border-[#E9E5DA] rounded-[10px] p-3">
+                        <div className="text-xs font-semibold text-[#5A574E] mb-2 flex items-center gap-1.5">
+                          <Users size={13} strokeWidth={1.75} /> 人員總負荷
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {journalRawRef.current.loadLines.map((line, li) => (
-                            <div key={li} className="text-xs text-[#3e362e] bg-white border border-[#8fb996] px-3 py-1.5 rounded-xl shadow-sm">
+                            <div key={li} className="text-xs text-[#1F1D17] bg-white border border-[#E9E5DA] px-3 py-1.5 rounded-lg">
                               {line.trim()}
                             </div>
                           ))}
@@ -1776,39 +1779,39 @@ export default function SprintList() {
                             const activeEntries = day.entries.filter(e => e.q1 || e.q2 || e.q3);
                             return (
                               <div key={di}>
-                                <div className={`flex items-center gap-2 px-3 py-2 rounded-t-xl text-sm font-bold border border-b-0 ${day.done ? 'bg-[#e8eedd] text-[#3e6b47] border-[#8fb996]' : 'bg-[#f4f1ea] text-[#6b5e50] border-[#e8d5b5]'}`}>
-                                  <span>{day.done ? '✅' : '○'}</span>
+                                <div className={`flex items-center gap-2 px-3 py-2 rounded-t-xl text-sm font-semibold border border-b-0 ${day.done ? 'bg-[#DDE6D9] text-[#4F7E5C] border-[#E9E5DA]' : 'bg-[#F6F3EB] text-[#5A574E] border-[#E9E5DA]'}`}>
+                                  {day.done ? <CheckCircle2 size={14} strokeWidth={2} /> : <Circle size={14} strokeWidth={1.75} />}
                                   <span>Day {day.idx + 1} / {sprint.totalDays}</span>
-                                  {day.date && <span className="font-normal text-[#8a7f72] ml-1">{day.date} ({day.dow})</span>}
+                                  {day.date && <span className="font-normal text-[#8B887E] ml-1">{day.date} ({day.dow})</span>}
                                 </div>
                                 {activeEntries.length === 0 ? (
-                                  <div className="px-3 py-4 text-xs text-[#b5a695] bg-[#fafaf7] border border-[#e8d5b5] rounded-b-xl">（本日站會完成，無文字記錄）</div>
+                                  <div className="px-3 py-4 text-xs text-[#B5B2A6] bg-[#FAF9F5] border border-[#E9E5DA] rounded-b-xl">（本日站會完成，無文字記錄）</div>
                                 ) : (
-                                  <div className="bg-[#fafaf7] border border-[#e8d5b5] rounded-b-xl p-3 space-y-2.5">
+                                  <div className="bg-[#FAF9F5] border border-[#E9E5DA] rounded-b-xl p-3 space-y-2.5">
                                     {activeEntries.map((e, ei) => (
-                                      <div key={ei} className="bg-white border border-[#e8d5b5] rounded-xl p-3 shadow-sm">
+                                      <div key={ei} className="bg-white border border-[#E9E5DA] rounded-[10px] p-3">
                                         <div className="flex items-center gap-2 mb-2">
-                                          <div className="w-7 h-7 rounded-full bg-[#5b755e] text-white flex items-center justify-center text-xs font-bold flex-shrink-0">{e.name.charAt(0)}</div>
-                                          <span className="font-bold text-sm text-[#3e362e]">{e.name}</span>
-                                          {e.role && <span className="text-xs bg-[#f4f1ea] text-[#6b5e50] px-2 py-0.5 rounded-full border border-[#d3cbbd]">{e.role}</span>}
+                                          <div className="w-7 h-7 rounded-full text-white flex items-center justify-center text-xs font-semibold flex-shrink-0" style={{ backgroundColor: avColor(e.name) }}>{e.name.charAt(0)}</div>
+                                          <span className="font-semibold text-sm text-[#1F1D17]">{e.name}</span>
+                                          {e.role && <span className="text-xs bg-[#F1EEE6] text-[#5A574E] px-2 py-0.5 rounded-lg border border-[#E9E5DA]">{e.role}</span>}
                                         </div>
                                         <div className="space-y-1.5 pl-1">
                                           {e.q1 && (
                                             <div className="flex gap-2">
-                                              <span className="flex-shrink-0 text-[10px] font-bold bg-[#e8f5e9] text-[#2e7d32] border border-[#a5d6a7] px-1.5 py-0.5 rounded mt-0.5">昨天</span>
-                                              <span className="text-xs text-[#3e362e] leading-relaxed whitespace-pre-wrap">{e.q1}</span>
+                                              <span className="flex-shrink-0 text-[10px] font-semibold bg-[#F1EEE6] text-[#5A574E] border border-[#E9E5DA] px-1.5 py-0.5 rounded mt-0.5">昨天</span>
+                                              <span className="text-xs text-[#1F1D17] leading-relaxed whitespace-pre-wrap">{e.q1}</span>
                                             </div>
                                           )}
                                           {e.q2 && (
                                             <div className="flex gap-2">
-                                              <span className="flex-shrink-0 text-[10px] font-bold bg-[#e3f2fd] text-[#1565c0] border border-[#90caf9] px-1.5 py-0.5 rounded mt-0.5">今天</span>
-                                              <span className="text-xs text-[#3e362e] leading-relaxed whitespace-pre-wrap">{e.q2}</span>
+                                              <span className="flex-shrink-0 text-[10px] font-semibold bg-[#F5E4DA] text-[#7A3520] border border-[#F5E4DA] px-1.5 py-0.5 rounded mt-0.5">今天</span>
+                                              <span className="text-xs text-[#1F1D17] leading-relaxed whitespace-pre-wrap">{e.q2}</span>
                                             </div>
                                           )}
                                           {e.q3 && (
                                             <div className="flex gap-2">
-                                              <span className="flex-shrink-0 text-[10px] font-bold bg-[#fff3e0] text-[#e65100] border border-[#ffcc80] px-1.5 py-0.5 rounded mt-0.5">阻礙</span>
-                                              <span className="text-xs text-[#3e362e] leading-relaxed whitespace-pre-wrap">{e.q3}</span>
+                                              <span className="flex-shrink-0 text-[10px] font-semibold bg-[#F0DDD3] text-[#B8543C] border border-[#F0DDD3] px-1.5 py-0.5 rounded mt-0.5">阻礙</span>
+                                              <span className="text-xs text-[#1F1D17] leading-relaxed whitespace-pre-wrap">{e.q3}</span>
                                             </div>
                                           )}
                                         </div>
@@ -1834,13 +1837,13 @@ export default function SprintList() {
                                 const wRange = wStart.date ? `${wStart.date} (${wStart.dow}) — ${wEnd.date} (${wEnd.dow})` : `Day ${w*7+1} — Day ${Math.min((w+1)*7, maxIdx+1)}`;
                                 const personNames = Array.from(new Set(weekDays.flatMap(d => d.entries.map(e => e.name))));
                                 return (
-                                  <div key={w} className="border border-[#d3cbbd] rounded-xl overflow-hidden">
-                                    <div className="bg-[#d3cbbd] text-[#3e362e] px-3 py-2 font-bold text-xs flex items-center gap-2">
-                                      <span>📅</span>
+                                  <div key={w} className="border border-[#E9E5DA] rounded-xl overflow-hidden">
+                                    <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] text-[#1F1D17] px-3 py-2 font-semibold text-xs flex items-center gap-2">
+                                      <Calendar size={12} strokeWidth={1.75} />
                                       <span>第 {w + 1} 週</span>
-                                      <span className="font-normal text-[#6b5e50]">{wRange}</span>
+                                      <span className="font-normal text-[#8B887E]">{wRange}</span>
                                     </div>
-                                    <div className="p-3 space-y-2.5 bg-[#fafaf7]">
+                                    <div className="p-3 space-y-2.5 bg-[#FAF9F5]">
                                       {personNames.map(name => {
                                         const pDays = weekDays
                                           .map(d => ({ ...d, e: d.entries.find(e => e.name === name) || { name, role: '', q1: '', q2: '', q3: '' } }))
@@ -1851,20 +1854,20 @@ export default function SprintList() {
                                         const lastQ2 = [...pDays].reverse().find(d => d.e.q2);
                                         const imps = pDays.filter(d => d.e.q3 && d.e.q3 !== '無');
                                         return (
-                                          <div key={name} className="bg-white border border-[#e8d5b5] rounded-xl p-3 shadow-sm">
+                                          <div key={name} className="bg-white border border-[#E9E5DA] rounded-[10px] p-3">
                                             <div className="flex items-center gap-2 mb-2.5">
-                                              <div className="w-7 h-7 rounded-full bg-[#5b755e] text-white flex items-center justify-center text-xs font-bold flex-shrink-0">{name.charAt(0)}</div>
-                                              <span className="font-bold text-sm text-[#3e362e]">{name}</span>
-                                              {personRole && <span className="text-xs bg-[#f4f1ea] text-[#6b5e50] px-2 py-0.5 rounded-full border border-[#d3cbbd]">{personRole}</span>}
+                                              <div className="w-7 h-7 rounded-full text-white flex items-center justify-center text-xs font-semibold flex-shrink-0" style={{ backgroundColor: avColor(name) }}>{name.charAt(0)}</div>
+                                              <span className="font-semibold text-sm text-[#1F1D17]">{name}</span>
+                                              {personRole && <span className="text-xs bg-[#F1EEE6] text-[#5A574E] px-2 py-0.5 rounded-lg border border-[#E9E5DA]">{personRole}</span>}
                                             </div>
                                             <div className="space-y-2 pl-1">
                                               {accs.length > 0 && (
                                                 <div>
-                                                  <div className="text-[10px] font-bold text-[#2e7d32] mb-1">📝 本週完成</div>
+                                                  <div className="text-[10px] font-semibold text-[#4F7E5C] mb-1 flex items-center gap-1"><CheckCircle2 size={11} strokeWidth={2} /> 本週完成</div>
                                                   <div className="space-y-1">
                                                     {accs.map((d, ai) => (
-                                                      <div key={ai} className="text-xs text-[#3e362e] bg-[#f1f8f1] border border-[#c8e6c9] rounded-lg px-2 py-1 flex gap-2">
-                                                        {d.date && <span className="flex-shrink-0 text-[#5b755e] font-medium">{d.date} ({d.dow})</span>}
+                                                      <div key={ai} className="text-xs text-[#1F1D17] bg-[#DDE6D9] border border-[#4F7E5C]/20 rounded-lg px-2 py-1 flex gap-2">
+                                                        {d.date && <span className="flex-shrink-0 text-[#4F7E5C] font-medium">{d.date} ({d.dow})</span>}
                                                         <span className="whitespace-pre-wrap">{d.e.q1}</span>
                                                       </div>
                                                     ))}
@@ -1872,25 +1875,25 @@ export default function SprintList() {
                                                 </div>
                                               )}
                                               {lastQ2 && (
-                                                <div className="text-xs bg-[#e3f2fd] border border-[#90caf9] rounded-lg px-2 py-1.5">
-                                                  <div className="text-[10px] font-bold text-[#1565c0] mb-0.5">🎯 下週計劃</div>
-                                                  <span className="text-[#3e362e] whitespace-pre-wrap">{lastQ2.e.q2}</span>
+                                                <div className="text-xs bg-[#F5E4DA] border border-[#C96442]/20 rounded-lg px-2 py-1.5">
+                                                  <div className="text-[10px] font-semibold text-[#7A3520] mb-0.5 flex items-center gap-1"><Target size={11} strokeWidth={2} /> 下週計劃</div>
+                                                  <span className="text-[#1F1D17] whitespace-pre-wrap">{lastQ2.e.q2}</span>
                                                 </div>
                                               )}
                                               {imps.length > 0 ? (
                                                 <div>
-                                                  <div className="text-[10px] font-bold text-[#e65100] mb-1">⚠️ 本週阻礙</div>
+                                                  <div className="text-[10px] font-semibold text-[#B8543C] mb-1 flex items-center gap-1"><X size={11} strokeWidth={2} /> 本週阻礙</div>
                                                   <div className="space-y-1">
                                                     {imps.map((d, ii) => (
-                                                      <div key={ii} className="text-xs text-[#3e362e] bg-[#fff3e0] border border-[#ffcc80] rounded-lg px-2 py-1 flex gap-2">
-                                                        {d.date && <span className="flex-shrink-0 text-[#e65100] font-medium">{d.date} ({d.dow})</span>}
+                                                      <div key={ii} className="text-xs text-[#1F1D17] bg-[#F0DDD3] border border-[#B8543C]/20 rounded-lg px-2 py-1 flex gap-2">
+                                                        {d.date && <span className="flex-shrink-0 text-[#B8543C] font-medium">{d.date} ({d.dow})</span>}
                                                         <span className="whitespace-pre-wrap">{d.e.q3}</span>
                                                       </div>
                                                     ))}
                                                   </div>
                                                 </div>
                                               ) : (
-                                                <div className="text-xs text-[#b5a695] bg-[#f4f1ea] border border-[#e8d5b5] rounded-lg px-2 py-1.5">⚠️ 本週阻礙：無</div>
+                                                <div className="text-xs text-[#8B887E] bg-[#F6F3EB] border border-[#E9E5DA] rounded-lg px-2 py-1.5">本週阻礙：無</div>
                                               )}
                                             </div>
                                           </div>
@@ -1906,19 +1909,20 @@ export default function SprintList() {
                       );
 
                       return (
-                        <div key={si} className="mb-4 border-2 border-[#5b755e] rounded-2xl overflow-hidden shadow-sm">
-                          <div className="bg-[#5b755e] text-white px-4 py-3">
+                        <div key={si} className="mb-4 border border-[#E9E5DA] rounded-xl overflow-hidden">
+                          <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-4 py-3">
                             <div className="flex items-center justify-between mb-2">
-                              <span className="font-bold text-sm">{sprint.name}</span>
-                              <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">{sprint.completionPct}% 完成</span>
+                              <span className="font-semibold text-sm text-[#1F1D17]">{sprint.name}</span>
+                              <span className="text-xs bg-[#F5E4DA] text-[#7A3520] px-2 py-0.5 rounded-lg">{sprint.completionPct}% 完成</span>
                             </div>
-                            <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
-                              <div className="h-full bg-white rounded-full" style={{ width: `${sprint.completionPct}%` }} />
+                            <div className="h-1 bg-[#F1EEE6] rounded-full overflow-hidden">
+                              <div className="h-full bg-[#C96442] rounded-full" style={{ width: `${sprint.completionPct}%` }} />
                             </div>
                           </div>
                           {sprint.goal && (
-                            <div className="bg-[#f4f1ea] border-b border-[#e8d5b5] px-4 py-2 text-xs text-[#6b5e50]">
-                              🎯 <span className="font-bold">Sprint Goal：</span>{sprint.goal}
+                            <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-4 py-2 text-xs text-[#5A574E] flex items-center gap-1.5">
+                              <Target size={12} strokeWidth={1.75} className="flex-shrink-0 text-[#C96442]" />
+                              <span className="font-semibold">Sprint Goal：</span>{sprint.goal}
                             </div>
                           )}
                           <div className="p-3">{dayContent}</div>
@@ -1928,7 +1932,7 @@ export default function SprintList() {
                   </div>
                 )}
               </div>
-              <div className="px-4 pb-4 flex-shrink-0 text-center text-xs text-[#b5a695]">
+              <div className="px-4 pb-4 flex-shrink-0 text-center text-xs text-[#8B887E]">
                 使用上方「複製」可取得純文字版本，方便貼到 LINE 或其他通訊工具
               </div>
             </div>
@@ -1938,14 +1942,13 @@ export default function SprintList() {
         {/* Share Modal */}
         {shareModalSprint && (
           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-            <div className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl p-6 shadow-2xl max-w-md w-full relative">
-               <button onClick={() => setShareModalSprint(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 font-bold text-xl">✕</button>
-               <h2 className="text-xl font-bold text-[#5b755e] mb-4 flex items-center gap-2"><span>👥</span> 共享專案</h2>
-               <p className="text-sm font-bold text-[#6b5e50] mb-4">專案名稱：{shareModalSprint.name}</p>
-               
-               
-               <div className="bg-[#e8eedd] border-2 border-[#5b755e] rounded-xl p-4 mb-4">
-                  <h3 className="font-bold text-sm text-[#3e362e] mb-2 flex justify-between items-center">
+            <div className="bg-white border border-[#E9E5DA] rounded-xl p-6 shadow-xl max-w-md w-full relative">
+               <button onClick={() => setShareModalSprint(null)} className="absolute top-4 right-4 text-[#B5B2A6] hover:text-[#1F1D17] transition-colors"><X size={18} strokeWidth={1.75} /></button>
+               <h2 className="text-base font-semibold text-[#1F1D17] mb-3 flex items-center gap-2"><Users size={16} strokeWidth={1.75} className="text-[#8B887E]" /> 共享專案</h2>
+               <p className="text-sm text-[#5A574E] mb-4">專案名稱：{shareModalSprint.name}</p>
+
+               <div className="bg-[#F6F3EB] border border-[#E9E5DA] rounded-lg p-4 mb-4">
+                  <h3 className="font-semibold text-sm text-[#1F1D17] mb-2 flex justify-between items-center">
                     專案專屬網址（公開檢視）
                     <button
                       onClick={() => {
@@ -1953,65 +1956,65 @@ export default function SprintList() {
                         navigator.clipboard.writeText(url);
                         alert('已複製連結！\n任何人（包含未登入訪客）只要取得此連結即可進入檢視此專案內容。');
                       }}
-                      className="text-xs bg-white border-2 border-[#5b755e] px-2 py-1 rounded-lg text-[#5b755e] hover:bg-[#5b755e] hover:text-white transition-colors shadow-sm"
+                      className="text-xs bg-white border border-[#E9E5DA] px-2.5 py-1 rounded-lg text-[#5A574E] hover:bg-[#F1EEE6] transition-colors"
                     >
-                      📋 複製
+                      複製
                     </button>
                   </h3>
                   <input
                     type="text"
                     readOnly
                     value={`${typeof window !== 'undefined' ? window.location.origin : ''}/?sprint=${shareModalSprint.id}`}
-                    className="w-full p-2 border-2 border-[#b5a695] rounded-lg bg-white text-xs text-[#6b5e50] outline-none focus:border-[#5b755e]"
+                    className="w-full p-2 border border-[#E9E5DA] rounded-lg bg-white text-xs text-[#5A574E] outline-none focus:ring-2 focus:ring-[#F5E4DA]"
                     onClick={(e) => (e.target as HTMLInputElement).select()}
                   />
-                  <p className="text-[10px] text-[#6b5e50] mt-2 leading-relaxed">
-                    💡 收到此連結的人 <b>不需要登入</b> 就能進入檢視；只有擁有者及下方協作者才能編輯。
+                  <p className="text-[10px] text-[#8B887E] mt-2 leading-relaxed">
+                    收到此連結的人 <b>不需要登入</b> 就能進入檢視；只有擁有者及下方協作者才能編輯。
                   </p>
                </div>
 
-               <div className="bg-[#f4f1ea] border-2 border-[#b5a695] rounded-xl p-4 mb-4">
-                  <h3 className="font-bold text-sm text-[#3e362e] mb-2">已加入的協作者</h3>
+               <div className="bg-[#F6F3EB] border border-[#E9E5DA] rounded-lg p-4 mb-4">
+                  <h3 className="font-semibold text-sm text-[#1F1D17] mb-2">已加入的協作者</h3>
                   {(!shareModalSprint.collaborators || shareModalSprint.collaborators.length === 0) ? (
-                    <div className="text-xs text-[#8a7f72] py-2">目前沒有協作者</div>
+                    <div className="text-xs text-[#8B887E] py-2">目前沒有協作者</div>
                   ) : (
                     <ul className="space-y-2">
                        {shareModalSprint.collaborators.map(c => (
-                         <li key={c.email} className="flex justify-between items-center text-sm font-bold bg-white px-3 py-2 border border-[#d3cbbd] rounded-lg">
-                           <span className="truncate flex-1 text-[#3e362e]">{c.email}</span>
-                           <span className="text-xs px-2 py-1 bg-[#e8eedd] text-[#4a7c59] rounded mx-2">{c.role === 'editor' ? '編輯' : '檢視'}</span>
-                           <button onClick={() => handleRemoveCollaborator(c.email)} className="text-red-500 hover:text-red-700">🗑️</button>
+                         <li key={c.email} className="flex justify-between items-center text-sm font-semibold bg-white px-3 py-2 border border-[#E9E5DA] rounded-lg">
+                           <span className="truncate flex-1 text-[#1F1D17]">{c.email}</span>
+                           <span className="text-xs px-2 py-1 bg-[#DDE6D9] text-[#4F7E5C] rounded-lg mx-2">{c.role === 'editor' ? '編輯' : '檢視'}</span>
+                           <button onClick={() => handleRemoveCollaborator(c.email)} className="text-[#B8543C] hover:text-[#7A3520] transition-colors"><X size={14} strokeWidth={2} /></button>
                          </li>
                        ))}
                     </ul>
                   )}
                </div>
-               
+
                <div className="space-y-3">
-                 <h3 className="font-bold text-sm text-[#3e362e]">新增協作者 (Google Email)</h3>
-                 <p className="text-[10px] text-[#8a7f72] bg-[#f9f6f2] border border-[#e8d5b5] rounded-lg px-3 py-2 leading-relaxed">
-                   💡 輸入對方的 Google Email 後點擊「邀請加入」。對方以該 Google 帳號登入後，即可在主頁看到共享的 Sprint。
+                 <h3 className="font-semibold text-sm text-[#1F1D17]">新增協作者 (Google Email)</h3>
+                 <p className="text-[10px] text-[#8B887E] bg-[#F6F3EB] border border-[#E9E5DA] rounded-lg px-3 py-2 leading-relaxed">
+                   輸入對方的 Google Email 後點擊「邀請加入」。對方以該 Google 帳號登入後，即可在主頁看到共享的 Sprint。
                  </p>
                  <div className="flex gap-2">
-                   <input 
-                     type="email" 
-                     value={shareEmail} 
-                     onChange={e => setShareEmail(e.target.value)} 
+                   <input
+                     type="email"
+                     value={shareEmail}
+                     onChange={e => setShareEmail(e.target.value)}
                      placeholder="輸入Email..."
-                     className="flex-1 p-2 border-2 border-[#b5a695] rounded-lg focus:outline-none focus:border-[#5b755e] font-bold text-sm"
+                     className="flex-1 p-2 border border-[#E9E5DA] rounded-[9px] focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] font-medium text-sm text-[#1F1D17]"
                    />
-                   <select 
-                     value={shareRole} 
+                   <select
+                     value={shareRole}
                      onChange={e => setShareRole(e.target.value as 'editor'|'viewer')}
-                     className="p-2 border-2 border-[#b5a695] rounded-lg bg-white focus:outline-none font-bold text-sm text-[#6b5e50]"
+                     className="p-2 border border-[#E9E5DA] rounded-[9px] bg-white focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] font-medium text-sm text-[#5A574E]"
                    >
                      <option value="editor">編輯</option>
                      <option value="viewer">檢視</option>
                    </select>
                  </div>
-                 <button 
+                 <button
                    onClick={handleAddCollaborator}
-                   className="w-full bg-[#5b755e] text-white font-bold py-2 rounded-lg hover:bg-[#4a614d] transition-colors"
+                   className="w-full bg-[#1F1D17] text-white font-semibold py-2 rounded-[9px] hover:bg-[#3D3B35] transition-colors"
                  >
                    邀請加入
                  </button>
