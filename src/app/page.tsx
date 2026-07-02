@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
 import { db } from '@/lib/firebase';
 import { collection, doc, getDocs, getDoc, setDoc, deleteDoc, query, where } from 'firebase/firestore';
+import { BookOpen, Settings, BarChart2, ClipboardList, Plus, Folder, Zap, CheckCircle2, Scale, LayoutGrid, Calendar, ChevronRight, RefreshCw } from 'lucide-react';
 
 interface Sprint {
   id: string;
@@ -1103,20 +1104,17 @@ export default function SprintList() {
   const sharedSprints = (user ? sprints.filter(s => !!(s.ownerId && s.ownerId !== user.uid)) : []).sort((a, b) => statusOrder[getSortStatus(a)] - statusOrder[getSortStatus(b)]);
 
   return (
-    <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
+    <main className="min-h-screen bg-[#FAF9F5] p-8 text-[#1F1D17]">
       <div className="w-full space-y-8">
         
         {/* Header */}
-        <div className="bg-[#fffdf9] border-4 border-[#5b755e] p-8 rounded-3xl shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 opacity-10 transform translate-x-4 -translate-y-4">
-             <span className="text-9xl">📚</span>
-          </div>
-          <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="bg-[#FFFFFF] border border-[#E9E5DA] p-8 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,.04)] relative">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-[#5b755e] drop-shadow-sm flex items-center gap-3">
-                <span>📚</span> Sprint 專案大廳
+              <h1 className="text-[28px] font-semibold text-[#1F1D17] flex items-center gap-2.5">
+                <BookOpen size={24} strokeWidth={1.75} className="text-[#C96442]" /> Sprint 專案大廳
               </h1>
-              <p className="text-[#6b5e50] mt-2 font-bold">
+              <p className="text-[#5A574E] mt-1.5 text-sm font-normal">
                 {user 
                   ? `歡迎回來，${user.displayName || '使用者'}！您的專案已同步至雲端。` 
                   : '您目前以訪客身分操作（資料僅存於瀏覽器），登入後即可將專案儲存至雲端！'}
@@ -1125,17 +1123,17 @@ export default function SprintList() {
             
             <div className="flex gap-3">
               {!user ? (
-                <button 
+                <button
                   onClick={signInWithGoogle}
-                  className="bg-white text-[#3e362e] px-4 py-3 rounded-xl font-bold shadow-md hover:bg-[#f4f1ea] transition-all border-2 border-[#b5a695] flex items-center gap-2"
+                  className="bg-[#FFFFFF] text-[#1F1D17] px-4 py-2.5 rounded-[9px] font-medium text-sm shadow-[0_1px_2px_rgba(0,0,0,.04)] hover:shadow-[0_10px_30px_-18px_rgba(0,0,0,.15)] hover:-translate-y-px transition-all border border-[#E9E5DA] flex items-center gap-2"
                 >
                   <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
                   Google 登入
                 </button>
               ) : (
-                <button 
+                <button
                   onClick={logout}
-                  className="bg-[#d3cbbd] text-[#6b5e50] px-4 py-3 rounded-xl font-bold shadow-md hover:bg-[#b5a695] hover:text-white transition-all border-2 border-[#b5a695] flex items-center gap-2"
+                  className="bg-[#FFFFFF] text-[#5A574E] px-4 py-2.5 rounded-[9px] font-medium text-sm border border-[#E9E5DA] hover:shadow-[0_10px_30px_-18px_rgba(0,0,0,.15)] hover:-translate-y-px transition-all flex items-center gap-2"
                 >
                   登出
                 </button>
@@ -1144,9 +1142,9 @@ export default function SprintList() {
               {user && (
                 <Link
                   href="/report"
-                  className="bg-[#5b755e] text-white px-5 py-3 rounded-xl font-bold shadow-md hover:bg-[#4a614d] transition-all hover:-translate-y-1 border-2 border-[#3e5241] flex items-center gap-2"
+                  className="bg-[#1F1D17] text-white px-5 py-2.5 rounded-[9px] font-medium text-sm hover:shadow-[0_10px_30px_-18px_rgba(0,0,0,.15)] hover:-translate-y-px transition-all flex items-center gap-2"
                 >
-                  <span>📊</span> 成效報告
+                  <BarChart2 size={16} strokeWidth={1.75} /> 成效報告
                 </Link>
               )}
               {(() => {
@@ -1159,14 +1157,14 @@ export default function SprintList() {
                   <button
                     onClick={handleExportJournal}
                     disabled={!canExport}
-                    className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold shadow-md transition-all border-2 ${
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-[9px] font-medium text-sm shadow-[0_1px_2px_rgba(0,0,0,.04)] transition-all border ${
                       canExport
-                        ? 'bg-[#f2e3c6] text-[#8b5a2b] border-[#d4a373] hover:bg-[#e8d0a8] hover:-translate-y-1'
-                        : 'bg-[#ede9e2] text-[#b5a695] border-[#d3cbbd] cursor-not-allowed'
+                        ? 'bg-[#F5E4DA] text-[#7A3520] border-[#C96442] hover:bg-[#f0d8ca] hover:-translate-y-px'
+                        : 'bg-[#F1EEE6] text-[#B5B2A6] border-[#E9E5DA] cursor-not-allowed'
                     }`}
                     title={canExport ? label : '目前無進行中的 Sprint'}
                   >
-                    <span>📋</span>
+                    <ClipboardList size={16} strokeWidth={1.75} />
                     {label}
                   </button>
                 );
@@ -1174,39 +1172,39 @@ export default function SprintList() {
 
               <button
                 onClick={createSprint}
-                className="bg-[#e07a5f] text-white px-6 py-3 rounded-xl font-bold shadow-md hover:bg-[#c66147] transition-all hover:-translate-y-1 border-2 border-[#8a4231] flex items-center gap-2"
+                className="bg-[#C96442] text-white px-6 py-2.5 rounded-[9px] font-medium text-sm hover:bg-[#b05538] hover:shadow-[0_10px_30px_-18px_rgba(0,0,0,.15)] hover:-translate-y-px transition-all flex items-center gap-2"
               >
-                <span>🌱</span> 建立新 Sprint
+                <Plus size={16} strokeWidth={2} /> 建立新 Sprint
               </button>
             </div>
           </div>
         </div>
 
         {/* ⚙️ 組織設定 */}
-        <div className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-lg overflow-hidden">
+        <div className="bg-[#FFFFFF] border border-[#E9E5DA] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,.04)] overflow-hidden">
           <button
             onClick={() => setShowTeamSection(prev => !prev)}
-            className="w-full bg-[#5b755e] p-4 flex items-center justify-between text-white font-bold text-lg hover:bg-[#4a614d] transition-colors"
+            className="w-full bg-[#F6F3EB] border-b border-[#E9E5DA] p-4 flex items-center justify-between text-[#1F1D17] font-semibold text-base hover:bg-[#F1EEE6] transition-colors"
           >
             <div className="flex items-center gap-2">
-              <span>⚙️</span><span>組織設定</span>
+              <Settings size={18} strokeWidth={1.75} className="text-[#8B887E]" /><span>組織設定</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm bg-white/20 px-2 py-0.5 rounded-full">{teamMembers.length} 位成員</span>
-              <span className="text-sm bg-white/20 px-2 py-0.5 rounded-full">{holidays.length} 筆假日</span>
-              <span className="text-sm bg-white/20 px-2 py-0.5 rounded-full">{lineRecipients.length} 位 LINE</span>
-              <span className="text-xl">{showTeamSection ? '▲' : '▼'}</span>
+              <span className="text-[11px] bg-[#F1EEE6] text-[#5A574E] px-2 py-0.5 rounded-full">{teamMembers.length} 位成員</span>
+              <span className="text-[11px] bg-[#F1EEE6] text-[#5A574E] px-2 py-0.5 rounded-full">{holidays.length} 筆假日</span>
+              <span className="text-[11px] bg-[#F1EEE6] text-[#5A574E] px-2 py-0.5 rounded-full">{lineRecipients.length} 位 LINE</span>
+              <span className="text-[#8B887E] text-sm">{showTeamSection ? '▲' : '▼'}</span>
             </div>
           </button>
 
           {showTeamSection && (
             <div className="p-6 space-y-6">
               {/* 三分頁切換 */}
-              <div className="flex rounded-xl overflow-hidden border-2 border-[#b5a695] w-fit flex-wrap">
-                {([['members','🧑‍💼 成員庫'],['holidays','🎌 國定假日'],['line','📱 LINE 推播']] as const).map(([tab, label], i) => (
+              <div className="flex rounded-lg overflow-hidden border border-[#E9E5DA] w-fit flex-wrap bg-[#F6F3EB]">
+                {([['members','成員庫'],['holidays','國定假日'],['line','LINE 推播']] as const).map(([tab, label], i) => (
                   <button key={tab}
                     onClick={() => { setOrgSettingsTab(tab); if (tab === 'line') loadLineUsers(); }}
-                    className={`px-4 py-2 text-sm font-bold transition-colors ${i > 0 ? 'border-l-2 border-[#b5a695]' : ''} ${orgSettingsTab === tab ? 'bg-[#5b755e] text-white' : 'bg-white text-[#5b755e] hover:bg-[#f4f1ea]'}`}
+                    className={`px-4 py-2 text-sm transition-colors ${i > 0 ? 'border-l border-[#E9E5DA]' : ''} ${orgSettingsTab === tab ? 'bg-[#FFFFFF] text-[#1F1D17] shadow-sm font-semibold' : 'bg-transparent text-[#8B887E] hover:text-[#1F1D17]'}`}
                   >{label}</button>
                 ))}
               </div>
@@ -1217,21 +1215,21 @@ export default function SprintList() {
                   {teamMembers.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                       {teamMembers.map(m => (
-                        <div key={m.id} className="bg-[#f4f1ea] border-2 border-[#d3cbbd] rounded-xl p-3 flex items-center gap-2 group">
-                          <div className="w-9 h-9 rounded-full bg-[#8fb996] flex items-center justify-center text-white font-bold text-sm flex-shrink-0">{(m.name||'?').slice(0,1)}</div>
+                        <div key={m.id} className="bg-[#F6F3EB] border border-[#E9E5DA] rounded-lg p-3 flex items-center gap-2 group">
+                          <div className="w-9 h-9 rounded-full bg-[#4F7E5C] flex items-center justify-center text-white font-bold text-sm flex-shrink-0">{(m.name||'?').slice(0,1)}</div>
                           <input type="text" value={m.name} onChange={e => updateMemberField(m.id,'name',e.target.value)}
-                            className="flex-1 min-w-0 bg-transparent font-bold text-[#3e362e] outline-none border-b border-transparent focus:border-[#8fb996] text-sm" placeholder="姓名" />
-                          <button onClick={() => removeMember(m.id)} className="text-[#c96262] opacity-0 group-hover:opacity-100 hover:bg-[#fceded] p-1 rounded transition-all" title="移除">✕</button>
+                            className="flex-1 min-w-0 bg-transparent font-bold text-[#3e362e] outline-none border-b border-transparent focus:border-[#C96442] text-sm" placeholder="姓名" />
+                          <button onClick={() => removeMember(m.id)} className="text-[#B8543C] opacity-0 group-hover:opacity-100 hover:bg-[#F0DDD3] p-1 rounded transition-all" title="移除">✕</button>
                         </div>
                       ))}
                     </div>
-                  ) : <p className="text-[#b5a695] text-sm text-center py-2">尚未新增任何成員。</p>}
+                  ) : <p className="text-[#B5B2A6] text-sm text-center py-2">尚未新增任何成員。</p>}
                   <div className="flex gap-2 items-center flex-wrap">
                     <input type="text" value={newMemberName} onChange={e => setNewMemberName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addMember()}
                       placeholder="輸入成員姓名，按 Enter 新增"
-                      className="flex-1 min-w-[180px] px-3 py-2 border-2 border-[#b5a695] rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#8fb996]/50 text-sm" />
+                      className="flex-1 min-w-[180px] px-3 py-2 border border-[#E9E5DA] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#C96442]/30 text-sm" />
                     <button onClick={addMember} disabled={!newMemberName.trim()}
-                      className="bg-[#8fb996] text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-[#78a07e] transition-all disabled:opacity-40 disabled:cursor-not-allowed border-2 border-[#5b755e] shadow-sm">＋ 新增成員</button>
+                      className="bg-[#4F7E5C] text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-[#3d6347] transition-all disabled:opacity-40 disabled:cursor-not-allowed">＋ 新增成員</button>
                   </div>
                 </div>
               )}
@@ -1242,22 +1240,22 @@ export default function SprintList() {
                   {holidays.length > 0 ? (
                     <div className="space-y-2">
                       {holidays.map(h => (
-                        <div key={h.id} className="bg-[#f4f1ea] border-2 border-[#d3cbbd] rounded-xl px-4 py-2.5 flex items-center gap-3 group">
-                          <span className="text-[#e07a5f] font-bold text-sm w-24 flex-shrink-0">{h.date}</span>
+                        <div key={h.id} className="bg-[#F6F3EB] border border-[#E9E5DA] rounded-lg px-4 py-2.5 flex items-center gap-3 group">
+                          <span className="text-[#C96442] font-bold text-sm w-24 flex-shrink-0">{h.date}</span>
                           <span className="flex-1 text-[#3e362e] font-medium text-sm">{h.name}</span>
-                          <button onClick={() => removeHoliday(h.id)} className="text-[#c96262] opacity-0 group-hover:opacity-100 hover:bg-[#fceded] px-2 py-1 rounded transition-all text-xs font-bold" title="刪除">✕</button>
+                          <button onClick={() => removeHoliday(h.id)} className="text-[#B8543C] opacity-0 group-hover:opacity-100 hover:bg-[#F0DDD3] px-2 py-1 rounded transition-all text-xs font-bold" title="刪除">✕</button>
                         </div>
                       ))}
                     </div>
-                  ) : <p className="text-[#b5a695] text-sm text-center py-2">尚未設定任何國定假日。</p>}
+                  ) : <p className="text-[#B5B2A6] text-sm text-center py-2">尚未設定任何國定假日。</p>}
                   <div className="flex gap-2 items-center flex-wrap">
                     <input type="date" value={newHolidayDate} onChange={e => setNewHolidayDate(e.target.value)}
-                      className="px-3 py-2 border-2 border-[#b5a695] rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#8fb996]/50 text-sm" />
+                      className="px-3 py-2 border border-[#E9E5DA] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#C96442]/30 text-sm" />
                     <input type="text" value={newHolidayName} onChange={e => setNewHolidayName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addHoliday()}
                       placeholder="假日名稱，例如：中秋節"
-                      className="flex-1 min-w-[160px] px-3 py-2 border-2 border-[#b5a695] rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-[#8fb996]/50 text-sm" />
+                      className="flex-1 min-w-[160px] px-3 py-2 border border-[#E9E5DA] rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#C96442]/30 text-sm" />
                     <button onClick={addHoliday} disabled={!newHolidayDate.trim()||!newHolidayName.trim()}
-                      className="bg-[#8fb996] text-white px-4 py-2 rounded-xl font-bold text-sm hover:bg-[#78a07e] transition-all disabled:opacity-40 disabled:cursor-not-allowed border-2 border-[#5b755e] shadow-sm whitespace-nowrap">＋ 新增假日</button>
+                      className="bg-[#4F7E5C] text-white px-4 py-2 rounded-lg font-medium text-sm hover:bg-[#3d6347] transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">＋ 新增假日</button>
                   </div>
                 </div>
               )}
@@ -1266,10 +1264,10 @@ export default function SprintList() {
               {orgSettingsTab === 'line' && (
                 <div className="space-y-5">
                   {/* 設定說明 */}
-                  <div className="bg-[#e8f0f4] border-2 border-[#76a5af] rounded-2xl px-4 py-3 text-sm text-[#3e4a5e] space-y-1">
-                    <p className="font-bold text-[#467386]">📋 設定步驟</p>
+                  <div className="bg-[#F6F3EB] border border-[#E9E5DA] rounded-lg px-4 py-3 text-sm text-[#3e4a5e] space-y-1">
+                    <p className="font-bold text-[#5A574E]">設定步驟</p>
                     <p>1. 請確認已在 LINE Developers Console 設定 Webhook URL：</p>
-                    <code className="block bg-white px-2 py-1 rounded text-xs font-mono text-[#3e362e] border border-[#c2dce3] select-all">https://scrum-project-red.vercel.app/api/line-webhook</code>
+                    <code className="block bg-white px-2 py-1 rounded text-xs font-mono text-[#3e362e] border border-[#E9E5DA] select-all">https://scrum-project-red.vercel.app/api/line-webhook</code>
                     <p>2. 收件人掃 QR Code 加 Bot 好友，並傳送任意訊息給 Bot 完成登錄。</p>
                     <p>3. 點「重新整理」載入已登錄成員，勾選後即可接收日誌。</p>
                   </div>
@@ -1277,25 +1275,25 @@ export default function SprintList() {
                   {/* 已登錄 LINE 用戶 */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-bold text-sm text-[#5b755e]">已登錄成員（勾選 = 接收日誌）</span>
+                      <span className="font-bold text-sm text-[#1F1D17]">已登錄成員（勾選 = 接收日誌）</span>
                       <button onClick={loadLineUsers} disabled={lineUsersLoading}
-                        className="text-xs text-[#5b755e] bg-[#e8eedd] border border-[#8fb996] px-3 py-1 rounded-lg hover:bg-[#dcedc1] transition-all disabled:opacity-50">
-                        {lineUsersLoading ? '載入中...' : '🔄 重新整理'}
+                        className="text-xs text-[#5A574E] bg-[#F6F3EB] border border-[#E9E5DA] px-3 py-1 rounded-lg hover:bg-[#F1EEE6] transition-all disabled:opacity-50">
+                        {lineUsersLoading ? '載入中...' : <><RefreshCw size={12} strokeWidth={1.75} className="inline mr-1" /> 重新整理</>}
                       </button>
                     </div>
                     {lineUsers.length === 0 ? (
-                      <p className="text-[#b5a695] text-sm text-center py-3">尚無人加入 Bot。</p>
+                      <p className="text-[#B5B2A6] text-sm text-center py-3">尚無人加入 Bot。</p>
                     ) : (
                       <div className="space-y-2">
                         {lineUsers.map(u => (
-                          <label key={u.lineUserId} className="flex items-center gap-3 px-3 py-2.5 bg-[#f4f1ea] border-2 border-[#d3cbbd] rounded-xl cursor-pointer hover:bg-[#ece9e2] transition-colors">
+                          <label key={u.lineUserId} className="flex items-center gap-3 px-3 py-2.5 bg-[#F6F3EB] border border-[#E9E5DA] rounded-lg cursor-pointer hover:bg-[#ece9e2] transition-colors">
                             <input type="checkbox" checked={lineRecipients.includes(u.lineUserId)} onChange={() => toggleLineRecipient(u.lineUserId)}
-                              className="w-4 h-4 accent-[#5b755e]" />
-                            <div className="w-8 h-8 rounded-full bg-[#76a5af] flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                              className="w-4 h-4 accent-[#C96442]" />
+                            <div className="w-8 h-8 rounded-full bg-[#8B887E] flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
                               {u.displayName.slice(0,1)}
                             </div>
                             <span className="font-medium text-sm text-[#3e362e]">{u.displayName}</span>
-                            {lineRecipients.includes(u.lineUserId) && <span className="ml-auto text-xs text-[#5b755e] font-bold">✓ 接收日誌</span>}
+                            {lineRecipients.includes(u.lineUserId) && <span className="ml-auto text-xs text-[#4F7E5C] font-bold">✓ 接收日誌</span>}
                           </label>
                         ))}
                       </div>
@@ -1303,48 +1301,48 @@ export default function SprintList() {
                   </div>
 
                   {/* 定時發送設定 */}
-                  <div className="border-t-2 border-[#e8d5b5] pt-4 space-y-3">
-                    <p className="font-bold text-sm text-[#5b755e]">⏰ 定時自動發送（台灣時間）</p>
+                  <div className="border-t border-[#E9E5DA] pt-4 space-y-3">
+                    <p className="font-bold text-sm text-[#1F1D17]">定時自動發送（台灣時間）</p>
                     <label className="flex items-center gap-3 text-sm">
-                      <input type="checkbox" checked={lineSchedule.dailyEnabled} onChange={e => updateLineSchedule({ dailyEnabled: e.target.checked })} className="w-4 h-4 accent-[#5b755e]" />
+                      <input type="checkbox" checked={lineSchedule.dailyEnabled} onChange={e => updateLineSchedule({ dailyEnabled: e.target.checked })} className="w-4 h-4 accent-[#C96442]" />
                       <span className="font-medium text-[#3e362e]">日報：每個工作日</span>
                       <select value={lineSchedule.dailyHour} onChange={e => updateLineSchedule({ dailyHour: Number(e.target.value) })}
-                        className="px-2 py-1 border border-[#b5a695] rounded text-sm bg-white">
+                        className="px-2 py-1 border border-[#E9E5DA] rounded text-sm bg-white">
                         {Array.from({length:16},(_,i)=>i+7).map(h=>(
                           <option key={h} value={h}>{h}:00</option>
                         ))}
                       </select>
                     </label>
                     <label className="flex items-center gap-3 text-sm flex-wrap">
-                      <input type="checkbox" checked={lineSchedule.weeklyEnabled} onChange={e => updateLineSchedule({ weeklyEnabled: e.target.checked })} className="w-4 h-4 accent-[#5b755e]" />
+                      <input type="checkbox" checked={lineSchedule.weeklyEnabled} onChange={e => updateLineSchedule({ weeklyEnabled: e.target.checked })} className="w-4 h-4 accent-[#C96442]" />
                       <span className="font-medium text-[#3e362e]">週報：每週</span>
                       <select value={lineSchedule.weeklyDay} onChange={e => updateLineSchedule({ weeklyDay: Number(e.target.value) })}
-                        className="px-2 py-1 border border-[#b5a695] rounded text-sm bg-white">
+                        className="px-2 py-1 border border-[#E9E5DA] rounded text-sm bg-white">
                         {(['一','二','三','四','五'] as const).map((d,i)=>(
                           <option key={i+1} value={i+1}>週{d}</option>
                         ))}
                       </select>
                       <select value={lineSchedule.weeklyHour} onChange={e => updateLineSchedule({ weeklyHour: Number(e.target.value) })}
-                        className="px-2 py-1 border border-[#b5a695] rounded text-sm bg-white">
+                        className="px-2 py-1 border border-[#E9E5DA] rounded text-sm bg-white">
                         {Array.from({length:16},(_,i)=>i+7).map(h=>(
                           <option key={h} value={h}>{h}:00</option>
                         ))}
                       </select>
                     </label>
-                    <p className="text-xs text-[#8a7f72]">⚠ 定時發送會使用「工作日誌」最後一次產生的內容。建議在下班前先開啟日誌確認內容，系統會自動存檔。</p>
+                    <p className="text-xs text-[#8B887E]">⚠ 定時發送會使用「工作日誌」最後一次產生的內容。建議在下班前先開啟日誌確認內容，系統會自動存檔。</p>
                     <div className="flex items-center gap-3 pt-1">
                       <button
                         onClick={sendLineTest}
                         disabled={lineTestSending || !lineRecipients.length}
-                        className={`px-4 py-2 rounded-xl font-bold text-sm transition-all disabled:opacity-40 ${
-                          lineTestResult === 'ok' ? 'bg-[#5b755e] text-white' :
-                          lineTestResult === 'error' ? 'bg-[#c96262] text-white' :
-                          'bg-[#e8eedd] text-[#5b755e] border border-[#8fb996] hover:bg-[#dcedc1]'
+                        className={`px-4 py-2 rounded-[9px] font-medium text-sm transition-all disabled:opacity-40 ${
+                          lineTestResult === 'ok' ? 'bg-[#4F7E5C] text-white' :
+                          lineTestResult === 'error' ? 'bg-[#B8543C] text-white' :
+                          'bg-[#F6F3EB] text-[#5A574E] border border-[#E9E5DA] hover:bg-[#F1EEE6]'
                         }`}
                       >
-                        {lineTestSending ? '傳送中...' : lineTestResult === 'ok' ? '✅ 測試成功！' : lineTestResult === 'error' ? '❌ 發送失敗' : '📨 測試發送'}
+                        {lineTestSending ? '傳送中...' : lineTestResult === 'ok' ? '✅ 測試成功！' : lineTestResult === 'error' ? '❌ 發送失敗' : '測試發送'}
                       </button>
-                      {lineTestResult === 'ok' && <span className="text-xs text-[#5b755e]">已傳送測試訊息，請確認手機 LINE 是否收到</span>}
+                      {lineTestResult === 'ok' && <span className="text-xs text-[#4F7E5C]">已傳送測試訊息，請確認手機 LINE 是否收到</span>}
                     </div>
                   </div>
                 </div>
@@ -1378,13 +1376,16 @@ export default function SprintList() {
             return (s.sprintStatus ?? auto) === 'pending';
           }).length;
           return (
-            <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden">
-              <div className="bg-[#5b755e] border-b-4 border-[#3d4f3f] p-4 text-xl font-bold text-white flex items-center justify-between">
-                <div className="flex items-center gap-2"><span>📊</span> 主管儀表板</div>
+            <section className="bg-[#FFFFFF] border border-[#E9E5DA] rounded-xl shadow-[0_1px_2px_rgba(0,0,0,.04)] overflow-hidden">
+              <div className="border-b border-[#E9E5DA] px-6 py-4 flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8B887E] mb-0.5">Overview</div>
+                  <div className="font-semibold text-[#1F1D17] flex items-center gap-2"><BarChart2 size={18} strokeWidth={1.75} className="text-[#8B887E]" /> 主管儀表板</div>
+                </div>
                 <div className="flex items-center gap-3">
-                  {dashLoading && <div className="text-sm font-normal opacity-70 animate-pulse">載入進度中...</div>}
-                  <Link href="/workload" className="text-sm font-bold bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5">
-                    <span>⚖️</span> 人員負荷分析
+                  {dashLoading && <div className="text-xs text-[#8B887E] animate-pulse">載入進度中...</div>}
+                  <Link href="/workload" className="text-xs text-[#5A574E] border border-[#E9E5DA] bg-[#FFFFFF] hover:shadow-[0_4px_12px_-6px_rgba(0,0,0,.1)] px-3 py-1.5 rounded-full transition-all flex items-center gap-1.5">
+                    <Scale size={14} strokeWidth={1.75} /> 人員負荷分析
                   </Link>
                 </div>
               </div>
@@ -1392,40 +1393,40 @@ export default function SprintList() {
               <div className="p-4 md:p-6 space-y-6">
                 {/* 整體統計卡片 */}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  <div className="bg-[#e8eedd] border-2 border-[#a5c2a8] rounded-2xl p-4 text-center">
-                    <div className="text-3xl font-bold text-[#4a7c59]">{sprints.length}</div>
-                    <div className="text-xs font-bold text-[#5b755e] mt-1">📁 Sprint 總數</div>
+                  <div className="bg-[#FFFFFF] border border-[#E9E5DA] rounded-xl p-4 text-center">
+                    <div className="text-[30px] font-semibold text-[#1F1D17] font-mono">{sprints.length}</div>
+                    <div className="text-[10px] uppercase tracking-[0.08em] text-[#8B887E] mt-1 flex items-center justify-center gap-1"><Folder size={12} strokeWidth={1.75} /> Sprint 總數</div>
                   </div>
-                  <div className="bg-[#faebce] border-2 border-[#e6c98a] rounded-2xl p-4 text-center">
-                    <div className="text-3xl font-bold text-[#d4a373]">{dashLoading ? '—' : inProgressCount}</div>
-                    <div className="text-xs font-bold text-[#d4a373] mt-1">⚡ 進行中的 Sprint</div>
+                  <div className="bg-[#FFFFFF] border border-[#E9E5DA] rounded-xl p-4 text-center">
+                    <div className="text-[30px] font-semibold text-[#B8893A] font-mono">{dashLoading ? '—' : inProgressCount}</div>
+                    <div className="text-[10px] uppercase tracking-[0.08em] text-[#8B887E] mt-1 flex items-center justify-center gap-1"><Zap size={12} strokeWidth={1.75} /> 進行中的 Sprint</div>
                   </div>
-                  <div className="bg-[#fceded] border-2 border-[#e6b1b1] rounded-2xl p-4 text-center">
-                    <div className="text-3xl font-bold text-[#c96262]">{dashLoading ? '—' : pendingCount}</div>
-                    <div className="text-xs font-bold text-[#c96262] mt-1">📋 待開始的 Sprint</div>
+                  <div className="bg-[#FFFFFF] border border-[#E9E5DA] rounded-xl p-4 text-center">
+                    <div className="text-[30px] font-semibold text-[#B8543C] font-mono">{dashLoading ? '—' : pendingCount}</div>
+                    <div className="text-[10px] uppercase tracking-[0.08em] text-[#8B887E] mt-1 flex items-center justify-center gap-1"><ClipboardList size={12} strokeWidth={1.75} /> 待開始的 Sprint</div>
                   </div>
-                  <div className="bg-[#f2e3c6] border-2 border-[#d4a373] rounded-2xl p-4 text-center">
-                    <div className="text-3xl font-bold text-[#8b5a2b]">{dashLoading ? '—' : totalTasks}</div>
-                    <div className="text-xs font-bold text-[#8b5a2b] mt-1">🗂 任務總數</div>
+                  <div className="bg-[#FFFFFF] border border-[#E9E5DA] rounded-xl p-4 text-center">
+                    <div className="text-[30px] font-semibold text-[#1F1D17] font-mono">{dashLoading ? '—' : totalTasks}</div>
+                    <div className="text-[10px] uppercase tracking-[0.08em] text-[#8B887E] mt-1 flex items-center justify-center gap-1"><LayoutGrid size={12} strokeWidth={1.75} /> 任務總數</div>
                   </div>
-                  <div className="bg-[#c2dce3] border-2 border-[#76a5af] rounded-2xl p-4 text-center">
-                    <div className="text-3xl font-bold text-[#467386]">{dashLoading ? '—' : `${overallRate}%`}</div>
-                    <div className="text-xs font-bold text-[#467386] mt-1">✅ 整體完成率</div>
+                  <div className="bg-[#FFFFFF] border border-[#E9E5DA] rounded-xl p-4 text-center">
+                    <div className="text-[30px] font-semibold text-[#4F7E5C] font-mono">{dashLoading ? '—' : `${overallRate}%`}</div>
+                    <div className="text-[10px] uppercase tracking-[0.08em] text-[#8B887E] mt-1 flex items-center justify-center gap-1"><CheckCircle2 size={12} strokeWidth={1.75} /> 整體完成率</div>
                   </div>
                 </div>
 
                 {/* 整體進度條 */}
                 {!dashLoading && totalTasks > 0 && (
                   <div className="space-y-2">
-                    <div className="w-full h-4 rounded-full bg-[#e8e4d9] overflow-hidden flex border-2 border-[#b5a695]">
-                      {totalDone > 0 && <div style={{ width: `${Math.round(totalDone/totalTasks*100)}%` }} className="bg-[#8fb996] h-full transition-all duration-700" />}
-                      {totalDoing > 0 && <div style={{ width: `${Math.round(totalDoing/totalTasks*100)}%` }} className="bg-[#d4a373] h-full transition-all duration-700" />}
-                      {totalTodo > 0 && <div style={{ width: `${Math.round(totalTodo/totalTasks*100)}%` }} className="bg-[#e6b1b1] h-full transition-all duration-700" />}
+                    <div className="w-full h-1 rounded-full bg-[#F1EEE6] overflow-hidden flex">
+                      {totalDone > 0 && <div style={{ width: `${Math.round(totalDone/totalTasks*100)}%` }} className="bg-[#4F7E5C] h-full transition-all duration-700" />}
+                      {totalDoing > 0 && <div style={{ width: `${Math.round(totalDoing/totalTasks*100)}%` }} className="bg-[#C96442] h-full transition-all duration-700" />}
+                      {totalTodo > 0 && <div style={{ width: `${Math.round(totalTodo/totalTasks*100)}%` }} className="bg-[#E9E5DA] h-full transition-all duration-700" />}
                     </div>
-                    <div className="flex gap-4 text-xs font-bold text-[#8a7f72]">
-                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#8fb996] inline-block"/>完成 {totalDone}</span>
-                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#d4a373] inline-block"/>進行中 {totalDoing}</span>
-                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-[#e6b1b1] inline-block"/>待處理 {totalTodo}</span>
+                    <div className="flex gap-4 text-[11px] text-[#8B887E]">
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#4F7E5C] inline-block"/>完成 {totalDone}</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#C96442] inline-block"/>進行中 {totalDoing}</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[#E9E5DA] inline-block"/>待處理 {totalTodo}</span>
                     </div>
                   </div>
                 )}
@@ -1438,11 +1439,11 @@ export default function SprintList() {
 
         {/* 專案清單 */}
         {loading ? (
-          <div className="text-center py-12 text-[#b5a695] font-bold text-lg flex flex-col items-center gap-4">
+          <div className="text-center py-12 text-[#B5B2A6] text-lg flex flex-col items-center gap-4">
             <div>資料載入中...</div>
             {loadTimeout && (
-              <div className="text-[#c96262] text-sm bg-[#fceded] p-4 rounded-xl border border-[#e6b1b1] max-w-md">
-                ⚠️ 讀取時間似乎有點久。這可能是因為您的網路連線不穩，或是 Firebase 資料庫連線失敗。
+              <div className="text-[#B8543C] text-sm bg-[#F0DDD3] p-4 rounded-xl border border-[#F0DDD3] max-w-md">
+                讀取時間似乎有點久。這可能是因為您的網路連線不穩，或是 Firebase 資料庫連線失敗。
                 <br /><br />
                 您可以嘗試重新整理網頁，或先使用下方的「建立新 Sprint」在本地端操作。
               </div>
@@ -1461,55 +1462,55 @@ export default function SprintList() {
                 <React.Fragment key={sprint.id}>
                 {showOwnedHeader && (
                   <div className="col-span-full flex items-center gap-3 mb-1">
-                    <div className="h-px flex-1 bg-[#a5c2a8]" />
-                    <span className="text-sm font-bold text-[#5b755e] flex items-center gap-1.5 bg-[#e8eedd] px-3 py-1 rounded-full">🗂 我的 Sprint</span>
-                    <div className="h-px flex-1 bg-[#a5c2a8]" />
+                    <div className="h-px flex-1 bg-[#E9E5DA]" />
+                    <span className="text-sm font-bold text-[#5A574E] flex items-center gap-1.5 bg-[#F1EEE6] px-3 py-1 rounded-full">我的 Sprint</span>
+                    <div className="h-px flex-1 bg-[#E9E5DA]" />
                   </div>
                 )}
                 {showSharedHeader && (
                   <div className="col-span-full flex items-center gap-3 my-2">
-                    <div className="h-px flex-1 bg-[#b8d4ea]" />
-                    <span className="text-sm font-bold text-[#4a7c9b] flex items-center gap-1.5 bg-[#dceef8] px-3 py-1 rounded-full">🤝 共享給我的 Sprint</span>
-                    <div className="h-px flex-1 bg-[#b8d4ea]" />
+                    <div className="h-px flex-1 bg-[#E9E5DA]" />
+                    <span className="text-sm font-bold text-[#5A574E] flex items-center gap-1.5 bg-[#F1EEE6] px-3 py-1 rounded-full">共享給我的 Sprint</span>
+                    <div className="h-px flex-1 bg-[#E9E5DA]" />
                   </div>
                 )}
                 <div
-                  className={`relative group overflow-hidden rounded-2xl border transition-all
-                    ${selectedSprintIds.has(sprint.id) ? 'ring-2 ring-[#d4a373] ring-offset-1' : ''}
+                  className={`relative group overflow-hidden rounded-xl border transition-all duration-150
+                    ${selectedSprintIds.has(sprint.id) ? 'ring-2 ring-[#C96442] ring-offset-1' : ''}
                     ${isCurrent
-                      ? 'bg-[#fffdf9] border-[#e07a5f] shadow-md ring-2 ring-[#e07a5f]/15'
+                      ? 'bg-[#FFFFFF] shadow-[0_0_0_1px_#C96442] border-transparent'
                       : isSharedToMe
-                        ? 'bg-[#f0f7ff] border-[#b8d4ea] hover:border-[#6b9ec4] hover:shadow-md hover:-translate-y-0.5'
-                        : 'bg-[#fffdf9] border-[#ddd6cc] hover:border-[#8fb996] hover:shadow-md hover:-translate-y-0.5'}
+                        ? 'bg-[#FFFFFF] border-[#E9E5DA] hover:shadow-[0_10px_30px_-18px_rgba(0,0,0,.15)] hover:-translate-y-px'
+                        : 'bg-[#FFFFFF] border-[#E9E5DA] hover:shadow-[0_10px_30px_-18px_rgba(0,0,0,.15)] hover:-translate-y-px'}
                   `}
                 >
                   {/* 工作日誌勾選框 */}
                   <div className="absolute top-2.5 left-2.5 z-20" onClick={e => toggleSprintSelect(sprint.id, e)}>
                     <div className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all ${
                       selectedSprintIds.has(sprint.id)
-                        ? 'bg-[#d4a373] border-[#b08040] text-white'
-                        : 'bg-white border-[#d3cbbd] hover:border-[#d4a373]'
+                        ? 'bg-[#C96442] border-[#C96442] text-white'
+                        : 'bg-white border-[#E9E5DA] hover:border-[#C96442]'
                     }`}>
                       {selectedSprintIds.has(sprint.id) && <span className="text-[10px] font-bold">✓</span>}
                     </div>
                   </div>
                   {/* 左側色條 */}
-                  <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${isCurrent ? 'bg-[#e07a5f]' : isSharedToMe ? 'bg-[#6b9ec4]' : 'bg-[#8fb996]'}`} />
+                  <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${isCurrent ? 'bg-[#C96442]' : isSharedToMe ? 'bg-[#8B887E]' : 'bg-[#E9E5DA]'}`} />
 
                   <div className="pl-9 pr-4 pt-4 pb-4 flex flex-col h-full">
                     {/* 頂部：日期 + 狀態徽章 + 操作按鈕 */}
                     {(() => {
                       const status = getSortStatus(sprint);
                       const statusCfg: Record<string, { label: string; cls: string }> = {
-                        'in-progress': { label: '進行中', cls: 'bg-[#fff0e0] text-[#c07020] border border-[#f0c080]' },
-                        'completed':   { label: '已完成', cls: 'bg-[#e8f4ea] text-[#3a7a4a] border border-[#9acea8]' },
-                        'pending':     { label: '待開始', cls: 'bg-[#f4f1ea] text-[#9a9080] border border-[#d8d0c0]' },
+                        'in-progress': { label: '進行中', cls: 'bg-[#F5E4DA] text-[#7A3520] border border-[#C96442]/30' },
+                        'completed':   { label: '已完成', cls: 'bg-[#DDE6D9] text-[#4F7E5C] border border-[#4F7E5C]/30' },
+                        'pending':     { label: '待開始', cls: 'bg-[#F1EEE6] text-[#5A574E] border border-[#E9E5DA]' },
                       };
                       const sc = statusCfg[status] ?? statusCfg['pending'];
                       return (
                         <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-[11px] text-[#b5a695] font-medium leading-none shrink-0" suppressHydrationWarning>
+                            <span className="text-[11px] text-[#B5B2A6] font-medium leading-none shrink-0" suppressHydrationWarning>
                               {new Date(sprint.createdAt).toLocaleDateString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric' })}
                             </span>
                             {!dashLoading && (
@@ -1519,29 +1520,29 @@ export default function SprintList() {
                                   onChange={e => { e.stopPropagation(); updateSprintStatus(sprint.id, e.target.value as Sprint['sprintStatus']); }}
                                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full border-0 cursor-pointer outline-none shrink-0 ${sc.cls}`}
                                 >
-                                  <option value="pending">📋 待開始</option>
-                                  <option value="in-progress">⚡ 進行中</option>
-                                  <option value="completed">✅ 已完成</option>
+                                  <option value="pending">待開始</option>
+                                  <option value="in-progress">進行中</option>
+                                  <option value="completed">已完成</option>
                                 </select>
                               </div>
                             )}
-                            {isCurrent && <span className="text-[10px] font-bold text-[#e07a5f] bg-[#fde8e2] px-2 py-0.5 rounded-full border border-[#f0c0b0] shrink-0">當前</span>}
-                            {isSharedToMe && <span className="text-[10px] font-bold text-[#4a7c9b] bg-[#dceef8] px-2 py-0.5 rounded-full border border-[#a8d0e8] shrink-0">🤝 共享</span>}
+                            {isCurrent && <span className="text-[10px] font-bold text-[#7A3520] bg-[#F5E4DA] px-2 py-0.5 rounded-full border border-[#C96442]/20 shrink-0">當前</span>}
+                            {isSharedToMe && <span className="text-[10px] font-bold text-[#5A574E] bg-[#F1EEE6] px-2 py-0.5 rounded-full border border-[#E9E5DA] shrink-0">共享</span>}
                             {!isSharedToMe && (sprint.collaborators?.length ?? 0) > 0 && (
-                              <span className="text-[10px] font-bold text-[#8b5a2b] bg-[#faebce] px-2 py-0.5 rounded-full border border-[#e8c888] shrink-0">👥 {sprint.collaborators!.length}人</span>
+                              <span className="text-[10px] font-bold text-[#5A574E] bg-[#F1EEE6] px-2 py-0.5 rounded-full border border-[#E9E5DA] shrink-0">{sprint.collaborators!.length}人</span>
                             )}
                           </div>
                           {/* 操作按鈕（hover 才顯示） */}
                           <div className="flex items-center gap-0.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                             {!isSharedToMe && (
-                              <button onClick={(e) => { e.stopPropagation(); setShareModalSprint(sprint); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-[#a09080] hover:bg-[#faebce] hover:text-[#8b5a2b] transition-colors text-sm" title="共享設定">👥</button>
+                              <button onClick={(e) => { e.stopPropagation(); setShareModalSprint(sprint); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-[#a09080] hover:bg-[#F5E4DA] hover:text-[#7A3520] transition-colors text-sm" title="共享設定">👥</button>
                             )}
                             {!isSharedToMe && (
-                              <button onClick={(e) => { e.stopPropagation(); copySprint(sprint.id); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-[#a09080] hover:bg-[#e8f0e8] hover:text-[#4a7c59] transition-colors text-sm" title="複製 Sprint">⎘</button>
+                              <button onClick={(e) => { e.stopPropagation(); copySprint(sprint.id); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-[#a09080] hover:bg-[#DDE6D9] hover:text-[#4F7E5C] transition-colors text-sm" title="複製 Sprint">⎘</button>
                             )}
-                            <button onClick={(e) => { e.stopPropagation(); setEditingId(isEditing ? null : sprint.id); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-[#a09080] hover:bg-[#e8eedd] hover:text-[#5b755e] transition-colors text-sm" title="編輯名稱">✎</button>
+                            <button onClick={(e) => { e.stopPropagation(); setEditingId(isEditing ? null : sprint.id); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-[#a09080] hover:bg-[#F1EEE6] hover:text-[#1F1D17] transition-colors text-sm" title="編輯名稱">✎</button>
                             {!isSharedToMe && (
-                              <button onClick={(e) => { e.stopPropagation(); deleteSprint(sprint.id); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-[#a09080] hover:bg-[#fceded] hover:text-[#c96262] transition-colors text-sm" title="刪除">✕</button>
+                              <button onClick={(e) => { e.stopPropagation(); deleteSprint(sprint.id); }} className="w-7 h-7 flex items-center justify-center rounded-lg text-[#a09080] hover:bg-[#F0DDD3] hover:text-[#B8543C] transition-colors text-sm" title="刪除">✕</button>
                             )}
                           </div>
                         </div>
@@ -1558,16 +1559,16 @@ export default function SprintList() {
                           onBlur={() => setEditingId(null)}
                           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); setEditingId(null); } }}
                           autoFocus
-                          className="w-full px-0 border-b-2 border-[#5b755e] focus:outline-none text-[#3e362e] font-bold text-[15px] leading-snug bg-transparent"
+                          className="w-full px-0 border-b border-[#C96442] focus:outline-none text-[#1F1D17] font-semibold text-[15px] leading-snug bg-transparent"
                         />
                       ) : (
-                        <h2 className="font-bold text-[#3e362e] text-[15px] leading-snug line-clamp-2 w-full">{sprint.name}</h2>
+                        <h2 className="font-semibold text-[#1F1D17] text-[15px] leading-snug line-clamp-2 w-full">{sprint.name}</h2>
                       )}
                     </div>
 
                     {/* Sprint Goal */}
                     {!isEditing && dashboards[sprint.id]?.sprintGoal && (
-                      <p className="text-[11px] text-[#8a7f72] line-clamp-2 mb-3 leading-relaxed bg-[#f9f6f0] px-2.5 py-1.5 rounded-lg border-l-2 border-[#c8b89a]">
+                      <p className="text-[12px] text-[#5A574E] line-clamp-2 mb-3 leading-[1.55] bg-[#F6F3EB] px-2.5 py-1.5 rounded-lg border-l border-[#E9E5DA]">
                         {dashboards[sprint.id].sprintGoal}
                       </p>
                     )}
@@ -1577,62 +1578,62 @@ export default function SprintList() {
                       <div className="mb-3 flex-1">
                         {dashLoading ? (
                           <div className="space-y-1.5">
-                            <div className="h-1.5 bg-[#f0ebe4] rounded-full animate-pulse w-full" />
-                            <div className="h-1.5 bg-[#f0ebe4] rounded-full animate-pulse w-2/3" />
+                            <div className="h-1.5 bg-[#F1EEE6] rounded-full animate-pulse w-full" />
+                            <div className="h-1.5 bg-[#F1EEE6] rounded-full animate-pulse w-2/3" />
                           </div>
                         ) : dashboards[sprint.id] && dashboards[sprint.id].totalTasks > 0 ? (
                           <>
                             {/* 進度條 */}
                             <div className="mb-2">
                               <div className="flex justify-between items-center mb-1">
-                                <span className="text-[10px] text-[#b5a695]">任務完成率</span>
-                                <span className="text-[10px] font-bold text-[#5b755e]">
+                                <span className="text-[10px] text-[#B5B2A6]">任務完成率</span>
+                                <span className="text-[10px] font-bold text-[#4F7E5C]">
                                   {Math.round(dashboards[sprint.id].done / dashboards[sprint.id].totalTasks * 100)}%
                                 </span>
                               </div>
-                              <div className="h-2 bg-[#f0ebe4] rounded-full overflow-hidden">
+                              <div className="h-1 bg-[#F1EEE6] rounded-full overflow-hidden">
                                 <div
                                   className="h-full rounded-full transition-all duration-700"
-                                  style={{ width: `${Math.round(dashboards[sprint.id].done / dashboards[sprint.id].totalTasks * 100)}%`, background: getSortStatus(sprint) === 'completed' ? '#5b755e' : '#8fb996' }}
+                                  style={{ width: `${Math.round(dashboards[sprint.id].done / dashboards[sprint.id].totalTasks * 100)}%`, background: getSortStatus(sprint) === 'completed' ? '#4F7E5C' : '#C96442' }}
                                 />
                               </div>
                             </div>
                             {/* 任務數量 */}
                             <div className="flex items-center gap-3 text-[11px]">
-                              <span className="flex items-center gap-1 font-bold text-[#5b755e]" title="已完成">✓ {dashboards[sprint.id].done}</span>
-                              <span className="flex items-center gap-1 font-bold text-[#e07a5f]" title="進行中">▶ {dashboards[sprint.id].doing}</span>
-                              <span className="flex items-center gap-1 text-[#b5a695]" title="待處理">○ {dashboards[sprint.id].todo}</span>
+                              <span className="flex items-center gap-1 font-bold text-[#4F7E5C]" title="已完成">✓ {dashboards[sprint.id].done}</span>
+                              <span className="flex items-center gap-1 font-bold text-[#C96442]" title="進行中">▶ {dashboards[sprint.id].doing}</span>
+                              <span className="flex items-center gap-1 text-[#B5B2A6]" title="待處理">○ {dashboards[sprint.id].todo}</span>
                               {dashboards[sprint.id].pbiTotal > 0 && (
-                                <span className="ml-auto text-[10px] text-[#8a7f72] bg-[#f4f0e8] px-2 py-0.5 rounded-full border border-[#e0d8cc]">
+                                <span className="ml-auto text-[10px] text-[#8B887E] bg-[#F1EEE6] px-2 py-0.5 rounded-full border border-[#E9E5DA]">
                                   PBI {dashboards[sprint.id].pbiAccepted}/{dashboards[sprint.id].pbiTotal}
                                 </span>
                               )}
                             </div>
                           </>
                         ) : (
-                          <div className="text-[11px] text-[#d3cbbd] italic py-1">尚無任務資料</div>
+                          <div className="text-[11px] text-[#B5B2A6] italic py-1">尚無任務資料</div>
                         )}
                       </div>
                     )}
 
                     {/* 底部：日期範圍 + 進入按鈕 */}
                     {!isEditing && (
-                      <div className="border-t border-[#f0ebe4] pt-3 flex items-center justify-between gap-2 mt-auto">
-                        <div className="text-[10px] text-[#c0b8ac] leading-tight">
+                      <div className="border-t border-[#E9E5DA] pt-3 flex items-center justify-between gap-2 mt-auto">
+                        <div className="text-[10px] text-[#B5B2A6] leading-tight">
                           {dashboards[sprint.id]?.startDate ? (
-                            <span>📅 {dashboards[sprint.id].startDate}{dashboards[sprint.id].endDate ? ` → ${dashboards[sprint.id].endDate}` : ''}</span>
+                            <span><Calendar size={11} strokeWidth={1.75} className="inline mr-0.5" />{dashboards[sprint.id].startDate}{dashboards[sprint.id].endDate ? ` → ${dashboards[sprint.id].endDate}` : ''}</span>
                           ) : null}
                         </div>
                         <button
                           onClick={() => selectSprint(sprint.id, sprint.name)}
-                          className={`flex items-center gap-1.5 text-[13px] font-bold px-4 py-1.5 rounded-lg transition-all shrink-0
+                          className={`flex items-center gap-1.5 text-[13px] font-medium px-4 py-1.5 rounded-lg transition-all shrink-0
                             ${isCurrent
-                              ? 'bg-[#e07a5f] text-white hover:bg-[#c66147] shadow-sm'
-                              : 'bg-[#eef6ef] text-[#5b755e] hover:bg-[#d4edda] border border-[#c0dcc4]'}
+                              ? 'bg-[#C96442] text-white hover:bg-[#b05538] shadow-sm'
+                              : 'bg-transparent text-[#5A574E] hover:text-[#1F1D17] border border-[#E9E5DA] hover:border-[#D8D3C5]'}
                           `}
                         >
                           {isCurrent ? '繼續編輯' : '進入'}
-                          <span className="text-[11px]">→</span>
+                          <ChevronRight size={14} strokeWidth={1.75} />
                         </button>
                       </div>
                     )}
@@ -1643,8 +1644,8 @@ export default function SprintList() {
             })}
 
             {sprints.length === 0 && (
-              <div className="col-span-full text-center py-12 text-[#b5a695] font-bold text-lg bg-[#fffdf9] border-2 border-dashed border-[#d3cbbd] rounded-2xl">
-                🪹 目前還沒有任何 Sprint，點擊右上角建立一個吧！
+              <div className="col-span-full text-center py-12 text-[#B5B2A6] text-base bg-[#FFFFFF] border border-dashed border-[#E9E5DA] rounded-xl">
+                目前還沒有任何 Sprint，點擊右上角建立一個吧！
               </div>
             )}
           </div>
@@ -1653,23 +1654,23 @@ export default function SprintList() {
         {/* 工作日誌匯出 Modal */}
         {showJournalModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowJournalModal(false)}>
-            <div className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="bg-[#FFFFFF] border border-[#E9E5DA] rounded-xl shadow-[0_20px_60px_-20px_rgba(0,0,0,.2)] w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
               {/* 標題列 */}
-              <div className="bg-[#5b755e] text-white px-6 py-4 rounded-t-2xl flex items-center justify-between gap-3 flex-shrink-0 flex-wrap">
+              <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-6 py-4 rounded-t-xl flex items-center justify-between gap-3 flex-shrink-0 flex-wrap">
                 <div>
-                  <h2 className="font-bold text-lg">📋 工作日誌</h2>
-                  <div className="text-sm text-white/70 mt-0.5">已選 {selectedSprintIds.size} 個 Sprint</div>
+                  <h2 className="font-bold text-lg text-[#1F1D17]"><ClipboardList size={18} strokeWidth={1.75} className="inline mr-1.5" /> 工作日誌</h2>
+                  <div className="text-sm text-[#8B887E] mt-0.5">已選 {selectedSprintIds.size} 個 Sprint</div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   {/* 日報 / 週報 切換 */}
-                  <div className="flex rounded-xl overflow-hidden border-2 border-white/30">
+                  <div className="flex rounded-lg overflow-hidden border border-[#E9E5DA] bg-[#FFFFFF]">
                     <button
                       onClick={() => setJournalType('daily')}
-                      className={`px-3 py-1.5 text-sm font-bold transition-colors ${journalType === 'daily' ? 'bg-white text-[#5b755e]' : 'text-white/80 hover:text-white hover:bg-white/10'}`}
+                      className={`px-3 py-1.5 text-sm font-bold transition-colors ${journalType === 'daily' ? 'bg-[#1F1D17] text-white' : 'text-[#8B887E] bg-transparent hover:text-[#1F1D17]'}`}
                     >日報</button>
                     <button
                       onClick={() => setJournalType('weekly')}
-                      className={`px-3 py-1.5 text-sm font-bold transition-colors border-l border-white/30 ${journalType === 'weekly' ? 'bg-white text-[#5b755e]' : 'text-white/80 hover:text-white hover:bg-white/10'}`}
+                      className={`px-3 py-1.5 text-sm font-bold transition-colors border-l border-[#E9E5DA] ${journalType === 'weekly' ? 'bg-[#1F1D17] text-white' : 'text-[#8B887E] bg-transparent hover:text-[#1F1D17]'}`}
                     >週報</button>
                   </div>
                   {/* 日期選擇器 */}
@@ -1678,7 +1679,7 @@ export default function SprintList() {
                       type="date"
                       value={journalDate}
                       onChange={e => setJournalDate(e.target.value)}
-                      className="px-2 py-1 rounded-lg text-sm text-[#3e362e] font-medium bg-white border-0 focus:outline-none focus:ring-2 focus:ring-white/60"
+                      className="px-2 py-1 rounded-lg text-sm text-[#1F1D17] font-medium bg-[#F6F3EB] border border-[#E9E5DA] focus:outline-none focus:ring-2 focus:ring-[#C96442]/30"
                     />
                   )}
                   {!journalLoading && journalType === 'weekly' && (
@@ -1687,14 +1688,14 @@ export default function SprintList() {
                         type="date"
                         value={journalRangeFrom}
                         onChange={e => setJournalRangeFrom(e.target.value)}
-                        className="px-2 py-1 rounded-lg text-sm text-[#3e362e] font-medium bg-white border-0 focus:outline-none focus:ring-2 focus:ring-white/60"
+                        className="px-2 py-1 rounded-lg text-sm text-[#1F1D17] font-medium bg-[#F6F3EB] border border-[#E9E5DA] focus:outline-none focus:ring-2 focus:ring-[#C96442]/30"
                       />
                       <span className="flex-shrink-0">—</span>
                       <input
                         type="date"
                         value={journalRangeTo}
                         onChange={e => setJournalRangeTo(e.target.value)}
-                        className="px-2 py-1 rounded-lg text-sm text-[#3e362e] font-medium bg-white border-0 focus:outline-none focus:ring-2 focus:ring-white/60"
+                        className="px-2 py-1 rounded-lg text-sm text-[#1F1D17] font-medium bg-[#F6F3EB] border border-[#E9E5DA] focus:outline-none focus:ring-2 focus:ring-[#C96442]/30"
                       />
                     </div>
                   )}
@@ -1707,8 +1708,8 @@ export default function SprintList() {
                           setTimeout(() => setJournalCopied(false), 2500);
                         });
                       }}
-                      className={`px-4 py-1.5 rounded-xl font-bold text-sm transition-all ${
-                        journalCopied ? 'bg-[#8fb996] text-white' : 'bg-white text-[#5b755e] hover:bg-[#f0f4ec]'
+                      className={`px-4 py-1.5 rounded-[9px] font-medium text-sm transition-all ${
+                        journalCopied ? 'bg-[#4F7E5C] text-white' : 'bg-[#FFFFFF] text-[#5A574E] border border-[#E9E5DA] hover:shadow-sm'
                       }`}
                     >
                       {journalCopied ? '✅ 已複製！' : '📋 複製'}
@@ -1718,20 +1719,20 @@ export default function SprintList() {
                     <button
                       onClick={sendLineJournal}
                       disabled={lineSending}
-                      className={`px-4 py-1.5 rounded-xl font-bold text-sm transition-all disabled:opacity-50 ${
-                        lineSent ? 'bg-[#76a5af] text-white' : 'bg-white text-[#5b755e] hover:bg-[#f0f4ec]'
+                      className={`px-4 py-1.5 rounded-[9px] font-medium text-sm transition-all disabled:opacity-50 ${
+                        lineSent ? 'bg-[#4F7E5C] text-white' : 'bg-[#FFFFFF] text-[#5A574E] border border-[#E9E5DA] hover:shadow-sm'
                       }`}
                     >
                       {lineSending ? '傳送中...' : lineSent ? '✅ 已傳送！' : '📱 傳 LINE'}
                     </button>
                   )}
-                  <button onClick={() => setShowJournalModal(false)} className="text-white/70 hover:text-white text-xl font-bold leading-none ml-1">✕</button>
+                  <button onClick={() => setShowJournalModal(false)} className="text-[#8B887E] hover:text-[#1F1D17] text-xl font-bold leading-none ml-1">✕</button>
                 </div>
               </div>
               {/* 內容 */}
               <div className="flex-1 overflow-y-auto p-4">
                 {journalLoading ? (
-                  <div className="flex flex-col items-center justify-center py-16 gap-4 text-[#8a7f72]">
+                  <div className="flex flex-col items-center justify-center py-16 gap-4 text-[#8B887E]">
                     <div className="text-4xl animate-spin">⏳</div>
                     <div className="font-bold">讀取中，請稍候...</div>
                   </div>
