@@ -12,12 +12,18 @@ function AutoGrowTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElemen
   useEffect(() => { resize(); }, [props.value]);
   return <textarea ref={ref} {...props} onInput={resize} />;
 }
+
 import { useAutoSave } from '@/hooks/useAutoSave';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import SaveIndicator from '@/components/SaveIndicator';
 import CountdownTimer from '@/components/CountdownTimer';
+import {
+  Clock, Target, AlertTriangle, ClipboardList, CalendarDays,
+  User, Users, BarChart2, RefreshCw, ChevronDown,
+  CheckCircle2, Flag, Camera, ArrowRight, BookOpen, FileText,
+} from 'lucide-react';
 
 interface BacklogTask {
   id: string;
@@ -29,6 +35,19 @@ interface BacklogTask {
   pbiId?: string;
   desc?: string;
 }
+
+const AV_PAL = ['#C96442', '#4F7E5C', '#B8893A', '#467386', '#8B5A2B', '#5A574E'];
+const avColor = (name: string): string => {
+  let h = 0;
+  for (let ci = 0; ci < name.length; ci++) h += name.charCodeAt(ci);
+  return AV_PAL[h % AV_PAL.length];
+};
+
+const qIconEl = (key: 'Q1' | 'Q2' | 'Q3') => {
+  if (key === 'Q1') return <CheckCircle2 size={14} strokeWidth={1.75} className="text-[#4F7E5C] flex-shrink-0" />;
+  if (key === 'Q2') return <Target size={14} strokeWidth={1.75} className="text-[#C96442] flex-shrink-0" />;
+  return <AlertTriangle size={14} strokeWidth={1.75} className="text-[#B8543C] flex-shrink-0" />;
+};
 
 export default function DailyScrum() {
   const [sprintDays, setSprintDays] = useState<number>(30);
@@ -103,7 +122,6 @@ export default function DailyScrum() {
           if (planning?.startDate) {
             setSprintStartDate(planning.startDate);
           }
-          // 載入開發人員名單
           const rawDevs: string[] =
             Array.isArray(planning?.devsList) && planning.devsList.length > 0
               ? planning.devsList.map((d: { name: string }) => d.name).filter(Boolean)
@@ -164,8 +182,6 @@ export default function DailyScrum() {
     return WEEKDAYS[base.getDay()];
   };
 
-  // 本地 derive：若 Firebase 尚未有 completedDays 或長度不對，做 padding/truncate
-  // 保留既有勾選狀態，避免天數變動時所有打勾被清空
   const completedDays: boolean[] = (() => {
     const stored = data.completedDays || [];
     const result = Array(sprintDays).fill(false);
@@ -175,7 +191,6 @@ export default function DailyScrum() {
     return result;
   })();
 
-  // 取得某天某問題某人的值（支援 object 和舊版 string 兩種格式）
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const getPersonNote = (notes: Record<number, string>, dayIdx: number, person: string): string => {
     const v = (notes as Record<number, unknown>)[dayIdx];
@@ -183,7 +198,6 @@ export default function DailyScrum() {
     return (v as Record<string, string>)[person] || '';
   };
 
-  // 逐人更新紀錄（儲存為 {人名: 內容} 物件）
   const updatePersonNote = (dayIdx: number, key: 'Q1' | 'Q2' | 'Q3', person: string, text: string) => {
     const notesKey = `dailyNotes${key}` as 'dailyNotesQ1' | 'dailyNotesQ2' | 'dailyNotesQ3';
     updateData(prev => {
@@ -233,10 +247,9 @@ export default function DailyScrum() {
   const toggleDay = (index: number) => {
     setActiveDay(index === activeDay ? null : index);
   };
-  
+
   const toggleCheck = (e: React.MouseEvent, index: number) => {
     e.stopPropagation();
-    // 從原始 stored 開始，保留超過 sprintDays 的歷史資料，避免縮短週期時遺失
     const stored = data.completedDays || [];
     const merged = stored.length >= sprintDays
       ? [...stored]
@@ -245,7 +258,6 @@ export default function DailyScrum() {
     updateData({ completedDays: merged });
   };
 
-  // 載入 backlog 任務
   const loadBacklogTasks = useCallback(async () => {
     const sprintId = localStorage.getItem('currentSprintId');
     if (!sprintId) return;
@@ -265,7 +277,6 @@ export default function DailyScrum() {
 
   useEffect(() => { loadBacklogTasks(); }, [loadBacklogTasks]);
 
-  // 切換任務狀態：todo → doing → done → todo
   const cycleStatus = async (taskId: string) => {
     const sprintId = localStorage.getItem('currentSprintId');
     if (!sprintId) return;
@@ -273,7 +284,6 @@ export default function DailyScrum() {
     const task = backlogTasks.find(t => t.id === taskId);
     if (!task || task.status === 'accepted' || task.status === 'pbi') return;
     const next = cycle[task.status] ?? 'todo';
-    // 樂觀更新 local state
     setBacklogTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: next } : t));
     try {
       const { doc, getDoc, updateDoc } = await import('firebase/firestore');
@@ -285,12 +295,10 @@ export default function DailyScrum() {
       const updated = allTasks.map(t => t.id === taskId ? { ...t, status: next } : t);
       await updateDoc(ref, { 'backlog.tasks': updated });
     } catch {
-      // 回滾
       setBacklogTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: task.status } : t));
     }
   };
 
-  // 任務按人員分組
   const tasksByPerson = (() => {
     const map = new Map<string, BacklogTask[]>();
     backlogTasks.forEach(t => {
@@ -303,55 +311,68 @@ export default function DailyScrum() {
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0], 'zh-TW'));
   })();
 
-  // 任務按狀態分組
   const tasksByStatus = [
-    { key: 'todo', label: '待辦', color: 'bg-[#e8e4d9] text-[#6b5e50] border-[#d3cbbd]', tasks: backlogTasks.filter(t => t.status === 'todo') },
-    { key: 'doing', label: '進行中', color: 'bg-[#faebce] text-[#8b5a2b] border-[#d4a373]', tasks: backlogTasks.filter(t => t.status === 'doing') },
-    { key: 'done', label: '完成', color: 'bg-[#e8eedd] text-[#4a7c59] border-[#8fb996]', tasks: backlogTasks.filter(t => t.status === 'done' || t.status === 'accepted') },
+    { key: 'todo', label: '待辦', dotColor: '#B8543C', tasks: backlogTasks.filter(t => t.status === 'todo') },
+    { key: 'doing', label: '進行中', dotColor: '#B8893A', tasks: backlogTasks.filter(t => t.status === 'doing') },
+    { key: 'done', label: '完成', dotColor: '#4F7E5C', tasks: backlogTasks.filter(t => t.status === 'done' || t.status === 'accepted') },
   ];
 
   const statusBadge = (status: string) => {
-    if (status === 'done' || status === 'accepted') return { label: status === 'accepted' ? '✅ 驗收' : '✅ 完成', cls: 'bg-[#e8eedd] text-[#4a7c59] border-[#8fb996]' };
-    if (status === 'doing') return { label: '🔄 進行中', cls: 'bg-[#faebce] text-[#8b5a2b] border-[#d4a373]' };
-    return { label: '⬜ 待辦', cls: 'bg-[#e8e4d9] text-[#6b5e50] border-[#d3cbbd]' };
+    if (status === 'done' || status === 'accepted') return { label: status === 'accepted' ? '驗收' : '完成', cls: 'bg-[#DDE6D9] text-[#4F7E5C]' };
+    if (status === 'doing') return { label: '進行中', cls: 'bg-[#F5E4DA] text-[#7A3520]' };
+    return { label: '待辦', cls: 'bg-[#F6F3EB] text-[#8B887E]' };
   };
 
   return (
-    <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
-      <div className="w-full space-y-8">
-        
-        <div className="flex items-center justify-between">
+    <main className="min-h-screen bg-[#FAF9F5] p-4 md:p-8 font-sans text-[#1F1D17]">
+      <div className="w-full space-y-6">
+
+        <div className="flex flex-col items-center">
           <Navigation />
           <SaveIndicator status={saveStatus} />
         </div>
 
-        {/* Loading Overlay */}
-        {loading && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"><div className="bg-white px-6 py-4 rounded-xl font-bold text-[#5b755e] shadow-xl text-lg flex items-center gap-3"><span>💾</span> <span>載入資料中...</span></div></div>}
-
-        {/* 頂部：會議資訊 */}
-        <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden relative">
-          <div className="bg-[#e07a5f] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white tracking-wider flex items-center gap-2 drop-shadow-sm">
-            <span>⏰</span> <ScrumTooltip keyword="Daily Scrum" text="會議守則 (Daily Scrum)" />
+        {loading && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+            <div className="bg-white px-6 py-4 rounded-xl border border-[#E9E5DA] text-[#5A574E] shadow-xl text-sm flex items-center gap-3">
+              <Clock size={15} strokeWidth={1.75} className="text-[#8B887E]" />
+              <span>載入資料中...</span>
+            </div>
           </div>
-          <div className="p-6 flex flex-col md:flex-row gap-6 items-center">
-            <div className="flex-1 bg-[#f2e3c6] border-2 border-[#d4a373] p-4 rounded-xl shadow-inner text-[#8b5a2b] font-bold flex items-center gap-3">
-              <span className="text-3xl">🎯</span> 
+        )}
+
+        {/* 會議守則 */}
+        <section className="bg-white border border-[#E9E5DA] rounded-xl overflow-hidden">
+          <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-5 py-3 flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-[#C96442] flex items-center justify-center flex-shrink-0">
+              <Clock size={13} strokeWidth={2} className="text-white" />
+            </div>
+            <span className="text-sm font-semibold text-[#1F1D17]">
+              <ScrumTooltip keyword="Daily Scrum" text="會議守則 (Daily Scrum)" />
+            </span>
+          </div>
+          <div className="p-5 flex flex-col md:flex-row gap-4 items-stretch">
+            {/* 目的說明：左側 3px 色條 */}
+            <div className="flex-1 border border-[#E9E5DA] border-l-[3px] border-l-[#C96442] rounded-xl p-4 bg-white flex items-center gap-3">
+              <Target size={20} strokeWidth={1.75} className="text-[#C96442] flex-shrink-0" />
               <div>
-                <div className="text-lg">目的：檢視計畫朝向目標、調整計畫</div>
-                <div className="text-sm font-medium text-[#6b5e50] mt-1">同步進度、發掘阻礙、確保團隊走在正軌上。</div>
+                <div className="text-sm font-semibold text-[#1F1D17]">目的：檢視計畫朝向目標、調整計畫</div>
+                <div className="text-xs text-[#5A574E] mt-0.5">同步進度、發掘阻礙、確保團隊走在正軌上。</div>
               </div>
             </div>
-            <div className="bg-[#fceded] border-2 border-[#e6b1b1] p-4 rounded-xl shadow-inner text-[#c96262] font-bold flex items-center gap-3 md:w-64 justify-center">
-              <span className="text-3xl">⏳</span>
-              <div className="text-lg">限時 15 分鐘</div>
+            {/* 限時 chip */}
+            <div className="inline-flex items-center gap-2 self-center bg-[#F5E4DA] text-[#7A3520] text-sm font-semibold px-4 py-2 rounded-lg flex-shrink-0">
+              <Clock size={14} strokeWidth={1.75} />
+              限時 15 分鐘
             </div>
+            {/* 剩餘工作天 */}
             {(() => {
               const total = Number(sprintDays) || 0;
               if (!sprintStartDate) {
                 return (
-                  <div className="bg-[#e8eedd] border-2 border-[#8fb996] p-4 rounded-xl shadow-inner text-[#4a7c59] font-bold flex items-center gap-3 md:w-64 justify-center">
-                    <span className="text-3xl">📅</span>
-                    <div><div className="text-sm">共 {total} 天 Sprint</div><div className="text-xs font-medium text-[#6b8f71] mt-0.5">（尚未設定開始日期）</div></div>
+                  <div className="inline-flex items-center gap-2 self-center bg-[#DDE6D9] text-[#4F7E5C] text-sm font-semibold px-4 py-2 rounded-lg flex-shrink-0">
+                    <CalendarDays size={14} strokeWidth={1.75} />
+                    共 {total} 天 Sprint
                   </div>
                 );
               }
@@ -363,18 +384,16 @@ export default function DailyScrum() {
               const isOverdue = today > sprintEnd;
               const remaining = isOverdue ? 0 : countWorkDays(tomorrow, sprintEnd);
               return (
-                <div className={`p-4 rounded-xl shadow-inner font-bold flex items-center gap-3 md:w-64 justify-center border-2 ${
-                  isOverdue ? 'bg-[#fceded] border-[#e6b1b1] text-[#c96262]'
-                  : remaining <= 3 ? 'bg-[#fff4c2] border-[#f0c060] text-[#7a5c00]'
-                  : 'bg-[#e8eedd] border-[#8fb996] text-[#4a7c59]'
+                <div className={`inline-flex items-center gap-2 self-center text-sm font-semibold px-4 py-2 rounded-lg flex-shrink-0 ${
+                  isOverdue ? 'bg-[#F0DDD3] text-[#B8543C]'
+                  : remaining <= 3 ? 'bg-[#F0E4C9] text-[#B8893A]'
+                  : 'bg-[#DDE6D9] text-[#4F7E5C]'
                 }`}>
-                  <span className="text-3xl">📅</span>
-                  <div>
-                    {isOverdue
-                      ? <><div className="text-base">⚠️ 已超出期限</div><div className="text-xs font-medium mt-0.5">共 {total} 天 Sprint</div></>
-                      : <><div className="text-base font-black">還剩 {remaining} 工作天</div><div className="text-xs font-medium mt-0.5">第 {elapsed} 工作天 / 共 {total} 天</div></>
-                    }
-                  </div>
+                  <CalendarDays size={14} strokeWidth={1.75} />
+                  {isOverdue
+                    ? '已超出 Sprint 期限'
+                    : `還剩 ${remaining} 工作天（第 ${elapsed} 天 / 共 ${total} 天）`
+                  }
                 </div>
               );
             })()}
@@ -385,77 +404,96 @@ export default function DailyScrum() {
         <CountdownTimer defaultMinutes={15} />
 
         {/* 站會任務看板 */}
-        <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden">
+        <section className="bg-white border border-[#E9E5DA] rounded-xl overflow-hidden">
           <div
-            className="bg-[#5b755e] border-b-4 border-[#3e5240] p-4 text-xl font-bold text-white tracking-wider flex items-center justify-between cursor-pointer select-none"
+            className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-5 py-3 flex items-center justify-between cursor-pointer select-none"
             onClick={() => setTaskBoardExpanded(v => !v)}
           >
             <div className="flex items-center gap-2">
-              <span>📋</span> 站會任務看板
-              <span className="text-sm font-normal opacity-80 ml-2">點擊狀態可切換</span>
+              <div className="w-6 h-6 rounded-md bg-[#5A574E] flex items-center justify-center flex-shrink-0">
+                <ClipboardList size={13} strokeWidth={2} className="text-white" />
+              </div>
+              <span className="text-sm font-semibold text-[#1F1D17]">站會任務看板</span>
+              <span className="text-xs text-[#8B887E]">點擊狀態可切換</span>
             </div>
-            <div className="flex items-center gap-3">
-              {/* 刷新 */}
+            <div className="flex items-center gap-2">
               <button
                 onClick={e => { e.stopPropagation(); loadBacklogTasks(); }}
-                className="text-sm bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg transition-colors font-normal"
+                className="text-[#8B887E] hover:text-[#1F1D17] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all"
                 title="重新載入"
-              >🔄</button>
-              {/* 分組切換 */}
-              <div className="flex text-sm font-normal rounded-lg overflow-hidden border border-white/30" onClick={e => e.stopPropagation()}>
+              >
+                <RefreshCw size={13} strokeWidth={1.75} />
+              </button>
+              {/* Segmented control */}
+              <div className="flex p-0.5 bg-[#E9E5DA] rounded-lg gap-0.5" onClick={e => e.stopPropagation()}>
                 <button
                   onClick={() => setTaskGroupBy('person')}
-                  className={`px-3 py-1 transition-colors ${taskGroupBy === 'person' ? 'bg-white text-[#5b755e]' : 'bg-white/10 hover:bg-white/20'}`}
-                >👤 人員</button>
+                  className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-md transition-all ${
+                    taskGroupBy === 'person' ? 'bg-white font-semibold text-[#1F1D17] shadow-sm' : 'text-[#8B887E] hover:text-[#5A574E]'
+                  }`}
+                >
+                  <User size={11} strokeWidth={1.75} /> 人員
+                </button>
                 <button
                   onClick={() => setTaskGroupBy('status')}
-                  className={`px-3 py-1 transition-colors ${taskGroupBy === 'status' ? 'bg-white text-[#5b755e]' : 'bg-white/10 hover:bg-white/20'}`}
-                >📊 狀態</button>
+                  className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-md transition-all ${
+                    taskGroupBy === 'status' ? 'bg-white font-semibold text-[#1F1D17] shadow-sm' : 'text-[#8B887E] hover:text-[#5A574E]'
+                  }`}
+                >
+                  <BarChart2 size={11} strokeWidth={1.75} /> 狀態
+                </button>
               </div>
-              <span className="text-sm">{taskBoardExpanded ? '▲' : '▼'}</span>
+              <ChevronDown size={14} strokeWidth={1.75} className={`text-[#8B887E] transition-transform ${taskBoardExpanded ? 'rotate-180' : ''}`} />
             </div>
           </div>
 
           {taskBoardExpanded && (
             <div className="p-4">
               {loadingTasks ? (
-                <div className="text-center py-8 text-[#8a7f72] animate-pulse font-bold">載入任務中…</div>
+                <div className="text-center py-8 text-[#8B887E] text-sm animate-pulse">載入任務中…</div>
               ) : backlogTasks.length === 0 ? (
-                <div className="text-center py-8 text-[#b5a695] italic">此 Sprint 尚無任務，請先在 Sprint Backlog 新增任務。</div>
+                <div className="text-center py-8 text-[#B5B2A6] text-sm italic">此 Sprint 尚無任務，請先在 Sprint Backlog 新增任務。</div>
               ) : taskGroupBy === 'person' ? (
-                /* ── 人員分組 ── */
-                <div className="space-y-4">
+                /* 人員分組 */
+                <div className="space-y-3">
                   {tasksByPerson.map(([name, tasks]) => {
                     const doneCount = tasks.filter(t => t.status === 'done' || t.status === 'accepted').length;
                     const doingCount = tasks.filter(t => t.status === 'doing').length;
                     return (
-                      <div key={name} className="border-2 border-[#e8d5b5] rounded-2xl overflow-hidden">
-                        <div className="bg-[#f4f1ea] px-4 py-2 flex items-center gap-3 border-b border-[#e8d5b5]">
-                          <div className="w-8 h-8 rounded-full bg-[#5b755e] text-white flex items-center justify-center text-sm font-bold shrink-0">
+                      <div key={name} className="border border-[#E9E5DA] rounded-xl overflow-hidden">
+                        <div className="bg-[#F6F3EB] px-4 py-2.5 flex items-center gap-3 border-b border-[#E9E5DA]">
+                          <div
+                            className="w-8 h-8 rounded-full text-white flex items-center justify-center text-sm font-semibold shrink-0"
+                            style={{ backgroundColor: avColor(name) }}
+                          >
                             {name[0]}
                           </div>
-                          <span className="font-bold text-[#3e362e]">{name}</span>
-                          <div className="ml-auto flex gap-2 text-xs">
-                            {doingCount > 0 && <span className="bg-[#faebce] text-[#8b5a2b] border border-[#d4a373] px-2 py-0.5 rounded-full font-bold">進行中 {doingCount}</span>}
-                            <span className="bg-[#e8eedd] text-[#4a7c59] border border-[#8fb996] px-2 py-0.5 rounded-full font-bold">完成 {doneCount}/{tasks.length}</span>
+                          <span className="font-semibold text-sm text-[#1F1D17]">{name}</span>
+                          <div className="ml-auto flex gap-1.5 text-xs">
+                            {doingCount > 0 && (
+                              <span className="bg-[#F5E4DA] text-[#7A3520] px-2 py-0.5 rounded-full font-medium">進行中 {doingCount}</span>
+                            )}
+                            <span className="bg-[#DDE6D9] text-[#4F7E5C] px-2 py-0.5 rounded-full font-medium">完成 {doneCount}/{tasks.length}</span>
                           </div>
                         </div>
-                        <div className="divide-y divide-[#f4f1ea]">
+                        <div className="divide-y divide-[#F6F3EB] bg-white">
                           {tasks.map(task => {
                             const badge = statusBadge(task.status);
                             const canCycle = task.status !== 'accepted';
                             return (
-                              <div key={task.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#faf8f5] transition-colors">
+                              <div key={task.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#FAF9F5] transition-colors">
                                 <button
                                   onClick={() => canCycle && cycleStatus(task.id)}
                                   disabled={!canCycle}
                                   title={canCycle ? '點擊切換狀態' : '已驗收，無法修改'}
-                                  className={`text-xs font-bold px-2.5 py-1 rounded-full border shrink-0 transition-all ${badge.cls} ${canCycle ? 'hover:opacity-80 cursor-pointer active:scale-95' : 'cursor-default opacity-70'}`}
+                                  className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 transition-all ${badge.cls} ${canCycle ? 'hover:opacity-80 cursor-pointer active:scale-95' : 'cursor-default opacity-70'}`}
                                 >
                                   {badge.label}
                                 </button>
-                                <span className="flex-1 text-sm text-[#3e362e] truncate">{task.title}</span>
-                                {task.time && <span className="text-xs text-[#8a7f72] shrink-0 bg-[#f4f1ea] px-2 py-0.5 rounded border border-[#e8d5b5]">{task.time}</span>}
+                                <span className="flex-1 text-sm text-[#1F1D17] truncate">{task.title}</span>
+                                {task.time && (
+                                  <span className="text-xs text-[#8B887E] shrink-0 bg-[#F6F3EB] px-2 py-0.5 rounded border border-[#E9E5DA]">{task.time}</span>
+                                )}
                               </div>
                             );
                           })}
@@ -465,17 +503,20 @@ export default function DailyScrum() {
                   })}
                 </div>
               ) : (
-                /* ── 狀態分組 ── */
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                /* 狀態分組 */
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {tasksByStatus.map(col => (
-                    <div key={col.key} className="border-2 border-[#e8d5b5] rounded-2xl overflow-hidden">
-                      <div className={`px-4 py-2 font-bold text-sm border-b border-[#e8d5b5] flex items-center justify-between ${col.color}`}>
-                        <span>{col.label}</span>
-                        <span className="text-xs opacity-80">{col.tasks.length} 項</span>
+                    <div key={col.key} className="border border-[#E9E5DA] rounded-xl overflow-hidden">
+                      <div className="px-4 py-2.5 bg-white border-b border-[#E9E5DA] flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: col.dotColor }} />
+                          <span className="text-xs font-semibold text-[#5A574E]">{col.label}</span>
+                        </div>
+                        <span className="text-xs text-[#8B887E]">{col.tasks.length} 項</span>
                       </div>
-                      <div className="divide-y divide-[#f4f1ea] bg-[#fffdf9]">
+                      <div className="divide-y divide-[#F6F3EB] bg-white">
                         {col.tasks.length === 0 && (
-                          <div className="text-xs text-[#d3cbbd] italic text-center py-4">無</div>
+                          <div className="text-xs text-[#B5B2A6] italic text-center py-4">無</div>
                         )}
                         {col.tasks.map(task => {
                           const canCycle = task.status !== 'accepted';
@@ -484,12 +525,12 @@ export default function DailyScrum() {
                               key={task.id}
                               onClick={() => canCycle && cycleStatus(task.id)}
                               title={canCycle ? '點擊切換狀態' : '已驗收'}
-                              className={`px-3 py-2.5 text-sm transition-colors ${canCycle ? 'cursor-pointer hover:bg-[#f4f1ea] active:bg-[#ece8df]' : 'cursor-default'}`}
+                              className={`px-3 py-2.5 text-sm transition-colors ${canCycle ? 'cursor-pointer hover:bg-[#FAF9F5] active:bg-[#F6F3EB]' : 'cursor-default'}`}
                             >
-                              <div className="font-medium text-[#3e362e] truncate">{task.title}</div>
+                              <div className="font-medium text-[#1F1D17] truncate">{task.title}</div>
                               <div className="flex items-center gap-2 mt-1">
-                                {task.role && <span className="text-[10px] text-[#8a7f72]">👤 {task.role}</span>}
-                                {task.time && <span className="text-[10px] text-[#8a7f72]">⏱ {task.time}</span>}
+                                {task.role && <span className="text-[10px] text-[#8B887E]">{task.role}</span>}
+                                {task.time && <span className="text-[10px] text-[#B5B2A6]">{task.time}</span>}
                               </div>
                             </div>
                           );
@@ -504,10 +545,13 @@ export default function DailyScrum() {
         </section>
 
         {/* 動態天數打卡追蹤 */}
-        <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden">
-          <div className="bg-[#8fb996] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white tracking-wider flex items-center justify-between gap-2 drop-shadow-sm flex-wrap">
+        <section className="bg-white border border-[#E9E5DA] rounded-xl overflow-hidden">
+          <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-5 py-3 flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2">
-              <span>📅</span> {sprintDays} 天進度追蹤 (D1 - D{sprintDays})
+              <div className="w-6 h-6 rounded-md bg-[#4F7E5C] flex items-center justify-center flex-shrink-0">
+                <CalendarDays size={13} strokeWidth={2} className="text-white" />
+              </div>
+              <span className="text-sm font-semibold text-[#1F1D17]">{sprintDays} 天進度追蹤 (D1 – D{sprintDays})</span>
             </div>
             {(() => {
               if (!sprintStartDate) return null;
@@ -520,286 +564,318 @@ export default function DailyScrum() {
               const isOverdue = today > sprintEnd;
               const remaining = isOverdue ? 0 : countWorkDays(tomorrow, sprintEnd);
               return (
-                <div className={`text-sm font-bold px-4 py-1.5 rounded-xl border-2 whitespace-nowrap ${
-                  isOverdue ? 'bg-[#c96262]/90 border-white/40 text-white'
-                  : remaining <= 3 ? 'bg-[#f0c060]/90 border-white/40 text-[#3e362e]'
-                  : 'bg-white/25 border-white/40 text-white'
+                <span className={`text-xs font-semibold px-3 py-1 rounded-lg ${
+                  isOverdue ? 'bg-[#F0DDD3] text-[#B8543C]'
+                  : remaining <= 3 ? 'bg-[#F0E4C9] text-[#B8893A]'
+                  : 'bg-[#DDE6D9] text-[#4F7E5C]'
                 }`}>
-                  {isOverdue
-                    ? `⚠️ 已超出期限`
-                    : `第 ${elapsed} 工作天｜還剩 ${remaining} 工作天`}
-                </div>
+                  {isOverdue ? '已超出期限' : `第 ${elapsed} 工作天｜還剩 ${remaining} 工作天`}
+                </span>
               );
             })()}
           </div>
-          
-          <div className="p-6">
-            <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-4">
+
+          <div className="p-4 md:p-5">
+            <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-3">
               {Array.from({ length: sprintDays }).map((_, i) => {
                 const isChecked = completedDays[i];
                 const dow = getDayOfWeek(i);
                 const isWeekend = dow === '週六' || dow === '週日';
                 const holiday = getHoliday(i);
+
                 return (
-
                   <div key={i} className={`transition-all duration-300 ${activeDay === i ? 'col-span-full' : ''}`}>
-                  <div
-                    onClick={() => toggleDay(i)}
-                    className={`border-4 rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group relative overflow-hidden min-h-[120px]
-                      ${isChecked
-                        ? holiday ? 'bg-[#d4a373] border-[#b5845a] shadow-md' : isWeekend ? 'bg-[#c9637a] border-[#a04060] shadow-md' : 'bg-[#8fb996] border-[#5b755e] shadow-md'
-                        : holiday ? 'bg-[#fdf3e0] border-[#e8c98a] hover:bg-[#fbe9c0] hover:-translate-y-1 hover:shadow-md' : isWeekend ? 'bg-[#f5d0d8] border-[#e8a0b0] hover:bg-[#f0bbc8] hover:-translate-y-1 hover:shadow-md' : 'bg-[#e8eedd] border-[#a5c2a8] hover:bg-[#dcedc1] hover:-translate-y-1 hover:shadow-md'
-                      }
-                      ${activeDay === i ? 'ring-4 ring-[#e07a5f] scale-[1.02]' : ''}
-                      `}
-                  >
                     <div
-                      className={`absolute top-3 right-3 flex items-center justify-center w-6 h-6 rounded border-2 z-20 cursor-pointer ${isChecked ? 'bg-white border-white text-[#5b755e]' : holiday ? 'border-[#d4a373] bg-white hover:border-[#b5845a]' : isWeekend ? 'border-[#c9637a] bg-white hover:border-[#a04060]' : 'border-[#8a7f72] bg-white hover:border-[#5b755e]'}`}
-                      onClick={(e) => toggleCheck(e, i)}
-                      title="標記這天為已完成"
+                      onClick={() => toggleDay(i)}
+                      className={`border rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer transition-all duration-200 group relative overflow-hidden min-h-[110px]
+                        ${isChecked
+                          ? 'bg-[#DDE6D9] border-[#4F7E5C]'
+                          : holiday
+                            ? 'bg-[#F0E4C9] border-[#E9E5DA]'
+                            : isWeekend
+                              ? 'bg-[#F6F3EB] border-[#E9E5DA]'
+                              : 'bg-white border-[#E9E5DA]'
+                        }
+                        ${activeDay === i ? 'ring-1 ring-[#C96442] shadow-md' : 'hover:shadow-sm hover:-translate-y-[1px]'}
+                      `}
                     >
-                      {isChecked && '✓'}
-                    </div>
-                    <div className={`font-bold text-lg z-10 transition-transform ${isChecked ? 'text-white' : holiday ? 'text-[#8b5a2b] group-hover:scale-110' : isWeekend ? 'text-[#a04060] group-hover:scale-110' : 'text-[#4a7c59] group-hover:scale-110'}`}>
-                      Day {i + 1}
-                    </div>
-                    {getDayDate(i) && (
-                      <div className={`text-xs font-semibold z-10 mt-0.5 ${isChecked ? 'text-white/80' : holiday ? 'text-[#b5845a]' : isWeekend ? 'text-[#c9637a]' : 'text-[#7a9e7e]'}`}>
-                        {getDayDate(i)}
-                      </div>
-                    )}
-                    {getDayOfWeek(i) && (
-                      <div className={`text-xs z-10 mt-0.5 ${isChecked ? 'text-white/70' : holiday ? 'text-[#b5845a]' : isWeekend ? 'text-[#c9637a]' : 'text-[#9db89f]'}`}>
-                        {getDayOfWeek(i)}
-                      </div>
-                    )}
-                    {holiday && (
-                      <div className={`text-[10px] font-bold z-10 mt-1 px-1.5 py-0.5 rounded-full max-w-full truncate ${isChecked ? 'bg-white/25 text-white' : 'bg-[#e8c98a] text-[#7a4f1a]'}`} title={holiday.name}>
-                        🎌 {holiday.name}
-                      </div>
-                    )}
-                    <div className={`text-3xl mt-2 z-10 transition-all ${isChecked ? 'opacity-100 scale-125' : 'opacity-50 group-hover:opacity-100'}`}>
-                      {isChecked ? '✅' : holiday ? '🎌' : '🌱'}
-                    </div>
-                    {(leaveStatus[i] || []).length > 0 && (
-                      <div className="text-[10px] font-bold bg-[#fff4c2] text-[#7a5c00] border border-[#f0c060] px-1.5 py-0.5 rounded-full mt-1 z-10">
-                        🏖 {(leaveStatus[i] || []).length}人請假
-                      </div>
-                    )}
+                      {/* 狀態小圓點 (左上) */}
+                      {!isChecked && (holiday || isWeekend) && (
+                        <span
+                          className="absolute top-2 left-2 w-2 h-2 rounded-full"
+                          style={{ backgroundColor: holiday ? '#B8893A' : '#B5B2A6' }}
+                        />
+                      )}
 
-                    {/* 點擊時的波紋效果背景 */}
-                    <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-20 transition-opacity"></div>
-                    
-                    {/* 打勾狀態的裝飾 */}
-                    {isChecked && (
-                      <div className="absolute -top-2 -right-2 text-2xl opacity-30 animate-pulse">
-                        ✨
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* 展開的筆記區塊 */}
-                  {activeDay === i && (
-                    <div className="mt-4 bg-[#f9fcf8] border-4 border-[#8fb996] rounded-2xl p-6 shadow-lg relative ml-2 mr-2">
-                      <h3 className="text-[#5b755e] font-bold text-xl mb-4 flex items-center gap-2 flex-wrap">
-                        <span>📝</span> Day {i + 1}{getDayDate(i) ? ` (${getDayDate(i)} ${getDayOfWeek(i)})` : ''} 執行事項與阻礙紀錄
-                        {holiday && <span className="text-sm font-bold bg-[#fbe9c0] text-[#7a4f1a] border border-[#e8c98a] px-2 py-0.5 rounded-full">🎌 {holiday.name}</span>}
-                      </h3>
-                      <div className="flex flex-col gap-5">
-                        {/* 出席狀況 */}
-                        {devNames.length > 0 && (
-                          <div className="bg-[#f4f1ea] border-2 border-[#d3cbbd] rounded-xl p-4">
-                            <div className="text-xs font-bold text-[#8a7f72] mb-3 flex items-center gap-1.5">
-                              <span>👥</span> 今日出席狀況 <span className="font-normal text-[#b5a695]">（點擊切換請假/出席）</span>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {devNames.map(name => {
-                                const onLeave = isOnLeave(i, name);
-                                return (
-                                  <button
-                                    key={name}
-                                    onClick={() => toggleLeave(i, name)}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 font-bold text-sm transition-all ${
-                                      onLeave
-                                        ? 'bg-[#fff4c2] border-[#f0c060] text-[#7a5c00]'
-                                        : 'bg-[#e8eedd] border-[#8fb996] text-[#4a7c59] hover:bg-[#dcedc1]'
-                                    }`}
-                                  >
-                                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] text-white font-bold shrink-0 ${onLeave ? 'bg-[#b5a695]' : 'bg-[#5b755e]'}`}>
-                                      {name.charAt(0)}
-                                    </span>
-                                    <span>{name}</span>
-                                    <span className="text-xs">{onLeave ? '🏖 請假' : '✅ 出席'}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
+                      {/* 打勾方塊 (右上) */}
+                      <div
+                        className={`absolute top-2 right-2 flex items-center justify-center w-5 h-5 rounded z-20 cursor-pointer border transition-all ${
+                          isChecked
+                            ? 'bg-[#4F7E5C] border-[#4F7E5C]'
+                            : 'border-[#D8D3C5] bg-white hover:border-[#8B887E]'
+                        }`}
+                        style={{ borderWidth: '1.5px' }}
+                        onClick={(e) => toggleCheck(e, i)}
+                        title="標記這天為已完成"
+                      >
+                        {isChecked && (
+                          <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                            <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
                         )}
+                      </div>
 
-                        {/* 舊版單一文字紀錄（保留顯示） */}
-                        {dailyNotes[i] && !dailyNotesQ1[i] && !dailyNotesQ2[i] && !dailyNotesQ3[i] && (
-                          <div className="bg-[#fffdf9] p-3 border-2 border-dashed border-[#d4a373] rounded-lg text-sm text-[#8b5a2b] whitespace-pre-wrap">
-                            <strong>舊版紀錄保留：</strong>{'\n'}{dailyNotes[i]}
-                          </div>
-                        )}
+                      <div className={`font-bold text-base z-10 mt-2 ${
+                        isChecked ? 'text-[#4F7E5C]' : holiday ? 'text-[#B8893A]' : isWeekend ? 'text-[#8B887E]' : 'text-[#1F1D17]'
+                      }`}>
+                        Day {i + 1}
+                      </div>
+                      {getDayDate(i) && (
+                        <div className={`text-xs z-10 mt-0.5 ${
+                          isChecked ? 'text-[#4F7E5C]' : holiday ? 'text-[#B8893A]' : isWeekend ? 'text-[#8B887E]' : 'text-[#5A574E]'
+                        }`}>
+                          {getDayDate(i)}
+                        </div>
+                      )}
+                      {getDayOfWeek(i) && (
+                        <div className={`text-[10px] z-10 mt-0.5 ${
+                          isChecked ? 'text-[#4F7E5C]/80' : holiday ? 'text-[#B8893A]/80' : isWeekend ? 'text-[#B5B2A6]' : 'text-[#8B887E]'
+                        }`}>
+                          {getDayOfWeek(i)}
+                        </div>
+                      )}
+                      {holiday && (
+                        <div className={`text-[10px] z-10 mt-1 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 max-w-full truncate ${
+                          isChecked ? 'bg-[#4F7E5C]/20 text-[#4F7E5C]' : 'bg-[#F0E4C9] text-[#B8893A]'
+                        }`} title={holiday.name}>
+                          <Flag size={9} strokeWidth={1.75} />
+                          {holiday.name}
+                        </div>
+                      )}
+                      {(leaveStatus[i] || []).length > 0 && (
+                        <div className="text-[10px] bg-[#F0E4C9] text-[#B8893A] px-1.5 py-0.5 rounded-md mt-1 z-10">
+                          {(leaveStatus[i] || []).length}人請假
+                        </div>
+                      )}
+                    </div>
 
-                        {/* 前一天唯讀紀錄 */}
-                        {(() => {
-                          // 往前找到最後一個有記錄的工作日
-                          let refDay = i - 1;
-                          while (refDay >= 0) {
-                            const hasRecord =
-                              dailyNotesQ1[refDay] || dailyNotesQ2[refDay] || dailyNotesQ3[refDay] || dailyNotes[refDay];
-                            if (hasRecord) break;
-                            refDay--;
-                          }
-                          if (refDay < 0) return null;
-                          return (
-                            <div className="bg-[#f4f1ea] border-2 border-dashed border-[#c9b99a] rounded-xl p-4">
-                              <button
-                                onClick={() => togglePrevDay(i)}
-                                className="w-full text-xs font-bold text-[#8a7f72] flex items-center gap-1.5 hover:text-[#6b5e50] transition-colors"
-                              >
-                                <span>📖</span>
-                                <span>Day {refDay + 1}（前一個工作日）紀錄參考</span>
-                                <span className="ml-auto text-[#b5a695] font-normal">{collapsedPrevDays.has(i) ? '▶ 展開' : '▼ 收合'}</span>
-                              </button>
-                              {!collapsedPrevDays.has(i) && (
-                                <div className="mt-3">
-                                  {([
-                                    { key: 'Q1' as const, label: '上一個工作日完成了什麼？', notes: dailyNotesQ1 },
-                                    { key: 'Q2' as const, label: '今天預計要做什麼？', notes: dailyNotesQ2 },
-                                    { key: 'Q3' as const, label: '遇到的阻礙？', notes: dailyNotesQ3 },
-                                  ]).map(q => {
-                                    const prevNotes = (q.notes as Record<number, unknown>)[refDay];
-                                    if (!prevNotes) return null;
-                                    const isObj = typeof prevNotes === 'object';
-                                    const lines: { name: string; text: string }[] = isObj
-                                      ? devNames.map(n => ({ name: n, text: (prevNotes as Record<string, string>)[n] || '' })).filter(l => l.text)
-                                      : typeof prevNotes === 'string' && prevNotes ? [{ name: '', text: prevNotes as string }] : [];
-                                    if (lines.length === 0) return null;
-                                    return (
-                                      <div key={q.key} className="mb-2 last:mb-0">
-                                        <div className="text-[10px] font-bold text-[#b5a695] mb-1">{q.label}</div>
-                                        <div className="space-y-1">
-                                          {lines.map(l => (
-                                            <div key={l.name} className="flex items-start gap-2">
-                                              {l.name && (
-                                                <div className="w-5 h-5 rounded-full bg-[#b5a695] text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                                                  {l.name.charAt(0)}
-                                                </div>
-                                              )}
-                                              <div className="text-xs text-[#6b5e50] bg-white/70 px-2 py-1 rounded-lg flex-1 whitespace-pre-wrap">{l.text}</div>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
+                    {/* 展開的筆記區塊 */}
+                    {activeDay === i && (
+                      <div className="mt-3 bg-white border border-[#E9E5DA] rounded-xl p-5 relative">
+                        <h3 className="text-[#1F1D17] font-semibold text-base mb-4 flex items-center gap-2 flex-wrap">
+                          <FileText size={16} strokeWidth={1.75} className="text-[#8B887E]" />
+                          Day {i + 1}{getDayDate(i) ? ` (${getDayDate(i)} ${getDayOfWeek(i)})` : ''} 執行事項與阻礙紀錄
+                          {holiday && (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium bg-[#F0E4C9] text-[#B8893A] px-2 py-0.5 rounded-lg">
+                              <Flag size={10} strokeWidth={1.75} /> {holiday.name}
+                            </span>
+                          )}
+                        </h3>
+
+                        <div className="flex flex-col gap-5">
+                          {/* 出席狀況 */}
+                          {devNames.length > 0 && (
+                            <div className="bg-[#F6F3EB] border border-[#E9E5DA] rounded-xl p-4">
+                              <div className="text-xs font-semibold text-[#5A574E] mb-3 flex items-center gap-1.5">
+                                <Users size={13} strokeWidth={1.75} className="text-[#8B887E]" />
+                                今日出席狀況
+                                <span className="font-normal text-[#B5B2A6]">（點擊切換請假/出席）</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {devNames.map(name => {
+                                  const onLeave = isOnLeave(i, name);
+                                  return (
+                                    <button
+                                      key={name}
+                                      onClick={() => toggleLeave(i, name)}
+                                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border font-medium text-sm transition-all ${
+                                        onLeave
+                                          ? 'border-[#B8893A] text-[#B8893A] bg-[#F0E4C9] hover:bg-[#E8D5B0]'
+                                          : 'border-[#4F7E5C] text-[#4F7E5C] bg-[#DDE6D9] hover:bg-[#C8D9C4]'
+                                      }`}
+                                    >
+                                      <span
+                                        className="w-5 h-5 rounded-full flex items-center justify-center text-[11px] text-white font-bold shrink-0"
+                                        style={{ backgroundColor: onLeave ? '#B5B2A6' : avColor(name) }}
+                                      >
+                                        {name.charAt(0)}
+                                      </span>
+                                      <span>{name}</span>
+                                      <span className="text-xs">{onLeave ? '請假' : '出席'}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             </div>
-                          );
-                        })()}
+                          )}
 
-                        {/* 三個問題 */}
-                        {([
-                          { key: 'Q1' as const, icon: '🔄', label: '1. 上一個工作日完成了什麼？', borderCls: 'border-[#a5c2a8]', ringCls: 'focus:ring-[#8fb996]/50', labelCls: 'text-[#5b755e]', ph: (n: string) => `${n}昨日進展...` },
-                          { key: 'Q2' as const, icon: '🎯', label: '2. 今天預計要做什麼？', borderCls: 'border-[#a5c2a8]', ringCls: 'focus:ring-[#8fb996]/50', labelCls: 'text-[#5b755e]', ph: (n: string) => `${n}今日目標...` },
-                          { key: 'Q3' as const, icon: '🚧', label: '3. 目前有沒有遇到任何阻礙？', borderCls: 'border-[#e6b1b1]', ringCls: 'focus:ring-[#e6b1b1]/50', labelCls: 'text-[#c96262]', ph: (n: string) => `${n}...` },
-                        ]).map(q => {
-                          const notes = q.key === 'Q1' ? dailyNotesQ1 : q.key === 'Q2' ? dailyNotesQ2 : dailyNotesQ3;
-                          // 檢查是否為舊版 string 格式
-                          const legacyStr = typeof (notes as Record<number, unknown>)[i] === 'string' ? (notes[i] as unknown as string) : '';
-                          return (
-                            <div key={q.key} className="flex flex-col gap-2">
-                              <label className={`font-bold flex items-center gap-2 ${q.labelCls}`}>
-                                <span>{q.icon}</span> {q.label}
-                              </label>
-                              {/* 舊版格式顯示 */}
-                              {legacyStr && (
-                                <div className="text-xs text-[#8a7f72] bg-[#f4f1ea] px-3 py-2 rounded-lg whitespace-pre-wrap border border-[#e8d5b5]">
-                                  {legacyStr}
-                                </div>
-                              )}
-                              {devNames.length > 0 ? (
-                                /* 有開發人員名單：逐人一行 */
-                                <div className="space-y-2">
-                                  {devNames.map(name => {
-                                    const onLeave = isOnLeave(i, name);
-                                    return (
-                                      <div key={name} className={`flex items-start gap-2 ${onLeave ? 'opacity-50' : ''}`}>
-                                        <div className="flex items-center gap-1.5 w-20 shrink-0 pt-2.5">
-                                          <div className={`w-6 h-6 rounded-full text-white flex items-center justify-center text-xs font-bold shrink-0 ${onLeave ? 'bg-[#b5a695]' : 'bg-[#5b755e]'}`}>
-                                            {name.charAt(0)}
+                          {/* 舊版單一文字紀錄（保留顯示） */}
+                          {dailyNotes[i] && !dailyNotesQ1[i] && !dailyNotesQ2[i] && !dailyNotesQ3[i] && (
+                            <div className="bg-[#FAF9F5] p-3 border border-dashed border-[#D8D3C5] rounded-lg text-xs text-[#5A574E] whitespace-pre-wrap">
+                              <strong>舊版紀錄保留：</strong>{'\n'}{dailyNotes[i]}
+                            </div>
+                          )}
+
+                          {/* 前一天唯讀紀錄 */}
+                          {(() => {
+                            let refDay = i - 1;
+                            while (refDay >= 0) {
+                              const hasRecord =
+                                dailyNotesQ1[refDay] || dailyNotesQ2[refDay] || dailyNotesQ3[refDay] || dailyNotes[refDay];
+                              if (hasRecord) break;
+                              refDay--;
+                            }
+                            if (refDay < 0) return null;
+                            return (
+                              <div className="bg-[#F6F3EB] border border-dashed border-[#D8D3C5] rounded-xl p-4">
+                                <button
+                                  onClick={() => togglePrevDay(i)}
+                                  className="w-full text-xs font-medium text-[#8B887E] flex items-center gap-1.5 hover:text-[#5A574E] transition-colors"
+                                >
+                                  <BookOpen size={12} strokeWidth={1.75} />
+                                  <span>Day {refDay + 1}（前一個工作日）紀錄參考</span>
+                                  <span className="ml-auto text-[#B5B2A6] font-normal">{collapsedPrevDays.has(i) ? '▶ 展開' : '▼ 收合'}</span>
+                                </button>
+                                {!collapsedPrevDays.has(i) && (
+                                  <div className="mt-3">
+                                    {([
+                                      { key: 'Q1' as const, label: '上一個工作日完成了什麼？', notes: dailyNotesQ1 },
+                                      { key: 'Q2' as const, label: '今天預計要做什麼？', notes: dailyNotesQ2 },
+                                      { key: 'Q3' as const, label: '遇到的阻礙？', notes: dailyNotesQ3 },
+                                    ]).map(q => {
+                                      const prevNotes = (q.notes as Record<number, unknown>)[refDay];
+                                      if (!prevNotes) return null;
+                                      const isObj = typeof prevNotes === 'object';
+                                      const lines: { name: string; text: string }[] = isObj
+                                        ? devNames.map(n => ({ name: n, text: (prevNotes as Record<string, string>)[n] || '' })).filter(l => l.text)
+                                        : typeof prevNotes === 'string' && prevNotes ? [{ name: '', text: prevNotes as string }] : [];
+                                      if (lines.length === 0) return null;
+                                      return (
+                                        <div key={q.key} className="mb-2 last:mb-0">
+                                          <div className="text-[10px] font-semibold text-[#B5B2A6] mb-1">{q.label}</div>
+                                          <div className="space-y-1">
+                                            {lines.map(l => (
+                                              <div key={l.name} className="flex items-start gap-2">
+                                                {l.name && (
+                                                  <div
+                                                    className="w-5 h-5 rounded-full text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5"
+                                                    style={{ backgroundColor: avColor(l.name) }}
+                                                  >
+                                                    {l.name.charAt(0)}
+                                                  </div>
+                                                )}
+                                                <div className="text-xs text-[#5A574E] bg-white px-2 py-1 rounded-lg flex-1 whitespace-pre-wrap border border-[#E9E5DA]">{l.text}</div>
+                                              </div>
+                                            ))}
                                           </div>
-                                          <span className="text-xs font-bold text-[#3e362e] truncate">{name}</span>
                                         </div>
-                                        {onLeave ? (
-                                          <div className="flex-1 py-2.5 px-3 text-xs text-[#b5a695] italic border-2 border-dashed border-[#d3cbbd] rounded-xl bg-[#f9f7f4]">🏖 本日請假</div>
-                                        ) : (
-                                          <AutoGrowTextarea
-                                            value={getPersonNote(notes, i, name)}
-                                            onChange={e => updatePersonNote(i, q.key, name, e.target.value)}
-                                            placeholder={q.ph(name)}
-                                            rows={2}
-                                            className={`flex-1 p-2.5 border-2 ${q.borderCls} rounded-xl focus:outline-none focus:ring-4 ${q.ringCls} bg-white text-[#3e362e] resize-none overflow-hidden shadow-inner text-sm`}
-                                          />
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                /* 無開發人員名單：單一文字區 */
-                                <AutoGrowTextarea
-                                  value={legacyStr || (typeof (notes as Record<number, unknown>)[i] === 'object' ? '' : '')}
-                                  onChange={e => updateSpecificNote(i, q.key, e.target.value)}
-                                  placeholder={q.ph('')}
-                                  rows={2}
-                                  className={`w-full p-3 border-2 ${q.borderCls} rounded-xl focus:outline-none focus:ring-4 ${q.ringCls} bg-white text-[#3e362e] resize-none overflow-hidden shadow-inner`}
-                                />
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="flex justify-between items-center mt-4 flex-wrap gap-2">
-                        <button
-                          onClick={() => { handleSaveDay(i); toggleDay(i); }}
-                          className="bg-[#5b755e] text-white border-2 border-[#3e5240] px-6 py-2 rounded-xl font-bold hover:bg-[#4a6b50] transition-all shadow-sm flex items-center gap-2"
-                        >
-                          ✅ 儲存並完成
-                        </button>
-                        <div className="flex items-center gap-2">
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+
+                          {/* 三個問題 */}
+                          {([
+                            { key: 'Q1' as const, label: '1. 上一個工作日完成了什麼？', borderCls: 'border-[#E9E5DA]', labelCls: 'text-[#1F1D17]', ph: (n: string) => `${n}昨日進展...` },
+                            { key: 'Q2' as const, label: '2. 今天預計要做什麼？', borderCls: 'border-[#E9E5DA]', labelCls: 'text-[#1F1D17]', ph: (n: string) => `${n}今日目標...` },
+                            { key: 'Q3' as const, label: '3. 目前有沒有遇到任何阻礙？', borderCls: 'border-[#F0DDD3]', labelCls: 'text-[#B8543C]', ph: (n: string) => `${n}...` },
+                          ]).map(q => {
+                            const notes = q.key === 'Q1' ? dailyNotesQ1 : q.key === 'Q2' ? dailyNotesQ2 : dailyNotesQ3;
+                            const legacyStr = typeof (notes as Record<number, unknown>)[i] === 'string' ? (notes[i] as unknown as string) : '';
+                            return (
+                              <div key={q.key} className="flex flex-col gap-2">
+                                <label className={`font-semibold text-sm flex items-center gap-1.5 ${q.labelCls}`}>
+                                  {qIconEl(q.key)} {q.label}
+                                </label>
+                                {legacyStr && (
+                                  <div className="text-xs text-[#8B887E] bg-[#F6F3EB] px-3 py-2 rounded-lg whitespace-pre-wrap border border-[#E9E5DA]">
+                                    {legacyStr}
+                                  </div>
+                                )}
+                                {devNames.length > 0 ? (
+                                  <div className="space-y-2">
+                                    {devNames.map(name => {
+                                      const onLeave = isOnLeave(i, name);
+                                      return (
+                                        <div key={name} className={`flex items-start gap-2 ${onLeave ? 'opacity-50' : ''}`}>
+                                          <div className="flex items-center gap-1.5 w-20 shrink-0 pt-2.5">
+                                            <div
+                                              className="w-6 h-6 rounded-full text-white flex items-center justify-center text-xs font-bold shrink-0"
+                                              style={{ backgroundColor: onLeave ? '#B5B2A6' : avColor(name) }}
+                                            >
+                                              {name.charAt(0)}
+                                            </div>
+                                            <span className="text-xs font-semibold text-[#1F1D17] truncate">{name}</span>
+                                          </div>
+                                          {onLeave ? (
+                                            <div className="flex-1 py-2 px-3 text-xs text-[#B8893A] italic border border-dashed border-[#D8D3C5] rounded-lg bg-[#F0E4C9]">本日請假</div>
+                                          ) : (
+                                            <AutoGrowTextarea
+                                              value={getPersonNote(notes, i, name)}
+                                              onChange={e => updatePersonNote(i, q.key, name, e.target.value)}
+                                              placeholder={q.ph(name)}
+                                              rows={2}
+                                              className={`flex-1 p-2.5 border ${q.borderCls} rounded-xl focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] bg-white text-[#1F1D17] resize-none overflow-hidden text-sm`}
+                                            />
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <AutoGrowTextarea
+                                    value={legacyStr || ''}
+                                    onChange={e => updateSpecificNote(i, q.key, e.target.value)}
+                                    placeholder={q.ph('')}
+                                    rows={2}
+                                    className={`w-full p-3 border ${q.borderCls} rounded-xl focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] bg-white text-[#1F1D17] resize-none overflow-hidden text-sm`}
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="flex justify-between items-center mt-5 flex-wrap gap-2">
                           <button
-                            onClick={() => setImagePreviewDay(i)}
-                            className="bg-[#c2dce3] text-[#467386] border-2 border-[#76a5af] px-4 py-2 rounded-xl font-bold hover:bg-[#aecfd8] transition-all shadow-sm flex items-center gap-2"
+                            onClick={() => { handleSaveDay(i); toggleDay(i); }}
+                            className="inline-flex items-center gap-2 bg-[#1F1D17] text-white px-6 py-2 rounded-[9px] font-semibold text-sm hover:bg-[#5A574E] transition-all"
                           >
-                            📷 生成圖片
+                            <CheckCircle2 size={14} strokeWidth={1.75} /> 儲存並完成
                           </button>
-                          <button
-                            onClick={() => toggleDay(i)}
-                            className="bg-[#e8eedd] text-[#5b755e] border-2 border-[#8fb996] px-6 py-2 rounded-xl font-bold hover:bg-[#dcedc1] transition-all shadow-sm"
-                          >
-                            收起紀錄
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setImagePreviewDay(i)}
+                              className="inline-flex items-center gap-2 border border-[#E9E5DA] text-[#5A574E] px-4 py-2 rounded-[9px] text-sm hover:bg-[#F6F3EB] transition-colors"
+                            >
+                              <Camera size={13} strokeWidth={1.75} /> 生成圖片
+                            </button>
+                            <button
+                              onClick={() => toggleDay(i)}
+                              className="border border-[#E9E5DA] text-[#5A574E] px-4 py-2 rounded-[9px] text-sm hover:bg-[#F6F3EB] transition-colors"
+                            >
+                              收起紀錄
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                   </div>
-
                 );
               })}
             </div>
           </div>
         </section>
 
-        <div className="flex justify-end pt-4">
-          <Link href="/review" className="bg-[#e07a5f] text-white px-8 py-3 rounded-full font-bold text-lg hover:bg-[#c66147] hover:-translate-y-1 transition-all duration-200 shadow-lg border-2 border-[#8a4231] inline-flex items-center gap-2">
-            <span>🚂</span> 前往 Sprint Review (檢視會議)
+        <div className="flex justify-end pt-2">
+          <Link
+            href="/review"
+            className="inline-flex items-center gap-2 bg-[#C96442] text-white px-8 py-3 rounded-[9px] font-semibold text-sm hover:bg-[#7A3520] hover:shadow-md hover:-translate-y-[1px] transition-all duration-150"
+          >
+            前往 Sprint Review (檢視會議) <ArrowRight size={16} strokeWidth={1.75} />
           </Link>
         </div>
 
@@ -818,21 +894,19 @@ export default function DailyScrum() {
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setImagePreviewDay(null)}>
             <div className="flex flex-col items-center gap-4 max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-              {/* 操作按鈕 */}
               <div className="flex items-center gap-3 flex-shrink-0">
                 <button
                   onClick={() => downloadDayImage(d)}
                   disabled={isGenerating}
-                  className="bg-[#5b755e] text-white px-6 py-2.5 rounded-xl font-bold hover:bg-[#4a6b50] transition-all shadow-md flex items-center gap-2 disabled:opacity-60"
+                  className="bg-[#1F1D17] text-white px-6 py-2.5 rounded-xl font-semibold text-sm hover:bg-[#5A574E] transition-all shadow-md flex items-center gap-2 disabled:opacity-60"
                 >
-                  {isGenerating ? '⏳ 生成中...' : '📥 下載圖片'}
+                  {isGenerating ? '生成中...' : '下載圖片'}
                 </button>
-                <button onClick={() => setImagePreviewDay(null)} className="bg-white/20 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-white/30 transition-all">
-                  ✕ 關閉
+                <button onClick={() => setImagePreviewDay(null)} className="bg-white/20 text-white px-4 py-2.5 rounded-xl font-semibold text-sm hover:bg-white/30 transition-all">
+                  關閉
                 </button>
               </div>
 
-              {/* 卡片本體（html2canvas 捕捉目標） */}
               <div ref={imageCardRef} style={{
                 width: '580px',
                 background: '#fffdf9',
@@ -843,11 +917,10 @@ export default function DailyScrum() {
                 color: '#3e362e',
                 boxShadow: '0 4px 24px rgba(0,0,0,0.15)',
               }}>
-                {/* Header */}
                 <div style={{ background: '#5b755e', padding: '18px 24px' }}>
                   {sprintName && <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: '12px', marginBottom: '4px' }}>{sprintName}</div>}
                   <div style={{ color: 'white', fontSize: '22px', fontWeight: 'bold' }}>
-                    📅 Day {d + 1}
+                    Day {d + 1}
                     {holiday && <span style={{ fontSize: '14px', marginLeft: '10px', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '8px' }}>🎌 {holiday.name}</span>}
                   </div>
                   <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px', marginTop: '4px' }}>
@@ -855,14 +928,12 @@ export default function DailyScrum() {
                   </div>
                 </div>
 
-                {/* 請假狀況 */}
                 {leavePeople.length > 0 && (
                   <div style={{ background: '#fff9e6', borderBottom: '2px solid #f0c060', padding: '10px 24px', fontSize: '13px', color: '#7a5c00' }}>
                     🏖 本日請假：{leavePeople.join('、')}
                   </div>
                 )}
 
-                {/* Q sections */}
                 {qDefs.map((q, qi) => {
                   const hasContent = devNames.length > 0
                     ? devNames.some(n => !isOnLeave(d, n) && !!getPersonNote(q.notes, d, n))
@@ -904,7 +975,6 @@ export default function DailyScrum() {
                   );
                 })}
 
-                {/* Footer */}
                 <div style={{ background: '#e8eedd', padding: '10px 24px', fontSize: '11px', color: '#8a7f72', textAlign: 'center', borderTop: '2px solid #c8d8c0' }}>
                   Daily Scrum · {new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}
                 </div>
