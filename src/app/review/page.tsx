@@ -7,6 +7,7 @@ import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import SaveIndicator from '@/components/SaveIndicator';
 import CountdownTimer from '@/components/CountdownTimer';
+import { Mic, Square, Sparkles, Globe, TrendingUp, Target, ArrowRight, Save } from 'lucide-react';
 
 type SummaryLevel = '詳細' | '適中' | '精簡';
 
@@ -59,11 +60,11 @@ function VoiceTextSection({
       if (!ctx) return;
       analyser.getByteTimeDomainData(dataArray);
       const W = canvas.width; const H = canvas.height;
-      ctx.fillStyle = '#1a2e1f';
+      ctx.fillStyle = '#1F1D17';
       ctx.fillRect(0, 0, W, H);
       ctx.lineWidth = 2;
-      ctx.strokeStyle = '#8fb996';
-      ctx.shadowColor = '#8fb996';
+      ctx.strokeStyle = '#C96442';
+      ctx.shadowColor = '#C96442';
       ctx.shadowBlur = 4;
       ctx.beginPath();
       const sw = W / dataArray.length;
@@ -83,7 +84,6 @@ function VoiceTextSection({
     if (animFrameRef.current) { cancelAnimationFrame(animFrameRef.current); animFrameRef.current = null; }
     if (audioCtxRef.current) { audioCtxRef.current.close(); audioCtxRef.current = null; }
     analyserRef.current = null;
-    // 清空 canvas
     const canvas = canvasRef.current;
     if (canvas) { const ctx = canvas.getContext('2d'); if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height); }
   };
@@ -187,14 +187,14 @@ function VoiceTextSection({
           ref={canvasRef}
           width={600}
           height={48}
-          className="w-full rounded-xl border-2 border-[#5b755e] bg-[#1a2e1f]"
+          className="w-full rounded-lg border border-[#E9E5DA]"
         />
       )}
 
       {/* 轉錄中提示 */}
       {isTranscribing && (
-        <div className="px-3 py-2 bg-[#e8eedd] border-2 border-[#8fb996] rounded-xl text-sm text-[#5b755e] font-bold flex items-center gap-2">
-          <span className="inline-block w-3 h-3 border-2 border-[#5b755e] border-t-transparent rounded-full animate-spin" />
+        <div className="px-3 py-2 bg-[#DDE6D9] border border-[#4F7E5C] rounded-lg text-sm text-[#4F7E5C] font-medium flex items-center gap-2">
+          <span className="inline-block w-3 h-3 border border-[#4F7E5C] border-t-transparent rounded-full animate-spin" />
           AI 轉錄中，請稍候...
         </div>
       )}
@@ -204,27 +204,32 @@ function VoiceTextSection({
         <button
           onClick={isRecording ? stopRecording : startRecording}
           disabled={isTranscribing}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold border-2 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all disabled:opacity-50 disabled:cursor-not-allowed
             ${isRecording
-              ? 'bg-[#e07a5f] text-white border-[#c66147] animate-pulse'
-              : 'bg-[#f4f1ea] text-[#8a4231] border-[#d4b896] hover:bg-[#ffe8e0] hover:border-[#e07a5f]'
+              ? 'bg-[#B8543C] text-white border-[#B8543C] animate-pulse'
+              : 'border-[#C96442] text-[#C96442] hover:bg-[#F5E4DA]'
             }`}
         >
-          {isRecording ? `⏹ 停止錄音 ${formatTime(recordingTime)}` : '🎙 錄音'}
+          {isRecording
+            ? <><Square size={11} strokeWidth={1.75} /> 停止錄音 {formatTime(recordingTime)}</>
+            : <><Mic size={13} strokeWidth={1.75} /> 錄音</>
+          }
         </button>
 
         {value.trim() && (
           <div className="flex items-center gap-1.5 ml-auto">
-            <span className="text-xs text-[#8a7f72] font-bold whitespace-nowrap">✨ AI 歸納：</span>
+            <span className="text-xs text-[#8B887E] whitespace-nowrap flex items-center gap-1">
+              <Sparkles size={11} strokeWidth={1.75} /> AI 歸納：
+            </span>
             {(['詳細', '適中', '精簡'] as SummaryLevel[]).map(level => (
               <button
                 key={level}
                 onClick={() => handleAISummarize(level)}
                 disabled={isProcessing}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all shadow-sm whitespace-nowrap
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all whitespace-nowrap
                   ${isProcessing && activeLevel === level
-                    ? 'bg-[#5b755e] text-white border-[#4a6350]'
-                    : 'bg-[#e8eedd] text-[#4a7c59] border-[#8fb996] hover:bg-[#dcedc1] disabled:opacity-50 disabled:cursor-not-allowed'
+                    ? 'bg-[#1F1D17] text-white border-[#1F1D17]'
+                    : 'bg-[#F6F3EB] text-[#5A574E] border-[#E9E5DA] hover:bg-[#F1EEE6] disabled:opacity-50 disabled:cursor-not-allowed'
                   }`}
               >
                 {isProcessing && activeLevel === level ? '處理中...' : level}
@@ -245,104 +250,141 @@ export default function SprintReview() {
     future: ''
   });
 
-  return (
-    <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
-      <div className="w-full space-y-8">
+  const taClass = "w-full px-4 py-3 bg-white border border-[#E9E5DA] rounded-[9px] focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] text-[#1F1D17] text-sm placeholder:text-[#B5B2A6] resize-none transition-all";
 
-        <div className="flex items-center justify-between">
+  return (
+    <main className="min-h-screen bg-[#FAF9F5] p-4 md:p-8 font-sans text-[#1F1D17]">
+      <div className="w-full space-y-6">
+
+        <div className="flex flex-col items-center">
           <Navigation />
           <SaveIndicator status={saveStatus} />
         </div>
 
-        {loading && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"><div className="bg-white px-6 py-4 rounded-xl font-bold text-[#5b755e] shadow-xl text-lg flex items-center gap-3"><span>💾</span> <span>載入資料中...</span></div></div>}
+        {loading && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+            <div className="bg-white px-6 py-4 rounded-xl border border-[#E9E5DA] text-[#5A574E] shadow-xl text-sm flex items-center gap-3">
+              <Save size={15} strokeWidth={1.75} className="text-[#8B887E]" />
+              <span>載入資料中...</span>
+            </div>
+          </div>
+        )}
 
         <CountdownTimer />
 
-        <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden relative">
-          <div className="bg-[#d4a373] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white tracking-wider flex justify-between items-center drop-shadow-sm">
+        {/* Sprint Review 主區塊 */}
+        <section className="bg-white border border-[#E9E5DA] rounded-xl overflow-hidden">
+          {/* Section Header */}
+          <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-5 py-3 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <span>🌻</span> <ScrumTooltip keyword="Sprint Review" text="向利益關係人展示成果 (Sprint Review)" />
+              <div className="w-6 h-6 rounded-md bg-[#C96442] flex items-center justify-center flex-shrink-0">
+                <Target size={13} strokeWidth={2} className="text-white" />
+              </div>
+              <span className="text-sm font-semibold text-[#1F1D17]">
+                <ScrumTooltip keyword="Sprint Review" text="向利益關係人展示成果 (Sprint Review)" />
+              </span>
             </div>
-            <div className="bg-[#8b5a2b] px-3 py-1 rounded-lg text-sm">
-              依 Sprint 週期限時
-            </div>
+            <span className="text-xs text-[#8B887E] bg-[#F1EEE6] px-2.5 py-1 rounded-lg">依 Sprint 週期限時</span>
           </div>
 
-          <div className="p-8 space-y-8">
+          <div className="p-5 space-y-4">
 
-            {/* 開場 (10%) */}
-            <div className="flex flex-col gap-2 relative">
-              <div className="absolute -left-4 top-2 w-2 h-full bg-[#e07a5f] rounded-full"></div>
-              <label className="font-bold text-xl text-[#8a4231] flex items-center gap-2">
-                <span>🎤</span> 開場與進度總結 (10%)
-                <span className="text-sm font-bold bg-[#fceded] text-[#c96262] px-2 py-0.5 rounded border border-[#e6b1b1]">PO 負責</span>
-              </label>
-              <VoiceTextSection
-                value={data.opening}
-                onChange={v => updateData({ opening: v })}
-                placeholder="總結本次 Sprint 的目標達成狀況..."
-                fieldName="開場與進度總結"
-                rows={3}
-                textareaClass="w-full mt-2 px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#d4a373]/50 shadow-inner font-medium text-[#3e362e] transition-all"
-              />
+            {/* 開場 10% */}
+            <div className="border border-[#E9E5DA] border-l-[3px] border-l-[#C96442] rounded-xl overflow-hidden">
+              <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-4 py-3 flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-md bg-[#C96442] flex items-center justify-center flex-shrink-0">
+                  <Mic size={13} strokeWidth={2} className="text-white" />
+                </div>
+                <span className="text-sm font-semibold text-[#1F1D17]">開場與進度總結</span>
+                <span className="text-[10px] font-mono bg-[#F1EEE6] text-[#8B887E] px-1.5 py-0.5 rounded">10%</span>
+                <span className="text-[10px] bg-[#F5E4DA] text-[#7A3520] px-2 py-0.5 rounded ml-0.5">PO 負責</span>
+              </div>
+              <div className="p-4">
+                <VoiceTextSection
+                  value={data.opening}
+                  onChange={v => updateData({ opening: v })}
+                  placeholder="總結本次 Sprint 的目標達成狀況..."
+                  fieldName="開場與進度總結"
+                  rows={3}
+                  textareaClass={taClass}
+                />
+              </div>
             </div>
 
-            {/* 展示 (50%) */}
-            <div className="flex flex-col gap-2 relative">
-              <div className="absolute -left-4 top-2 w-2 h-full bg-[#8fb996] rounded-full"></div>
-              <label className="font-bold text-xl text-[#4a7c59] flex items-center gap-2">
-                <span>✨</span> 成果演示與體驗 (50%)
-              </label>
-              <VoiceTextSection
-                value={data.demo}
-                onChange={v => updateData({ demo: v })}
-                placeholder="記錄展示的具體功能與現場反饋..."
-                fieldName="成果演示與體驗"
-                rows={5}
-                textareaClass="w-full mt-2 px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e] transition-all min-h-[150px]"
-              />
+            {/* 展示 50% */}
+            <div className="border border-[#E9E5DA] border-l-[3px] border-l-[#4F7E5C] rounded-xl overflow-hidden">
+              <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-4 py-3 flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-md bg-[#4F7E5C] flex items-center justify-center flex-shrink-0">
+                  <Sparkles size={13} strokeWidth={2} className="text-white" />
+                </div>
+                <span className="text-sm font-semibold text-[#1F1D17]">成果演示與體驗</span>
+                <span className="text-[10px] font-mono bg-[#F1EEE6] text-[#8B887E] px-1.5 py-0.5 rounded">50%</span>
+              </div>
+              <div className="p-4">
+                <VoiceTextSection
+                  value={data.demo}
+                  onChange={v => updateData({ demo: v })}
+                  placeholder="記錄展示的具體功能與現場反饋..."
+                  fieldName="成果演示與體驗"
+                  rows={5}
+                  textareaClass={taClass + ' min-h-[150px]'}
+                />
+              </div>
             </div>
 
-            {/* 市場與現況 (20%) */}
-            <div className="flex flex-col gap-2 relative">
-              <div className="absolute -left-4 top-2 w-2 h-full bg-[#76a5af] rounded-full"></div>
-              <label className="font-bold text-xl text-[#467386] flex items-center gap-2">
-                <span>🌍</span> 市場與現況討論 (20%)
-                <span className="text-sm font-bold bg-[#fceded] text-[#c96262] px-2 py-0.5 rounded border border-[#e6b1b1]">PO 負責</span>
-              </label>
-              <VoiceTextSection
-                value={data.market}
-                onChange={v => updateData({ market: v })}
-                placeholder="討論市場變化、業務需求調整..."
-                fieldName="市場與現況討論"
-                rows={3}
-                textareaClass="w-full mt-2 px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#76a5af]/50 shadow-inner font-medium text-[#3e362e] transition-all"
-              />
+            {/* 市場 20% */}
+            <div className="border border-[#E9E5DA] border-l-[3px] border-l-[#467386] rounded-xl overflow-hidden">
+              <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-4 py-3 flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-md bg-[#467386] flex items-center justify-center flex-shrink-0">
+                  <Globe size={13} strokeWidth={2} className="text-white" />
+                </div>
+                <span className="text-sm font-semibold text-[#1F1D17]">市場與現況討論</span>
+                <span className="text-[10px] font-mono bg-[#F1EEE6] text-[#8B887E] px-1.5 py-0.5 rounded">20%</span>
+                <span className="text-[10px] bg-[#F5E4DA] text-[#7A3520] px-2 py-0.5 rounded ml-0.5">PO 負責</span>
+              </div>
+              <div className="p-4">
+                <VoiceTextSection
+                  value={data.market}
+                  onChange={v => updateData({ market: v })}
+                  placeholder="討論市場變化、業務需求調整..."
+                  fieldName="市場與現況討論"
+                  rows={3}
+                  textareaClass={taClass}
+                />
+              </div>
             </div>
 
-            {/* 展望未來 (20%) */}
-            <div className="flex flex-col gap-2 relative">
-              <div className="absolute -left-4 top-2 w-2 h-full bg-[#d3cbbd] rounded-full"></div>
-              <label className="font-bold text-xl text-[#6b5e50] flex items-center gap-2">
-                <span>🔭</span> 展望未來 (20%)
-                <span className="text-sm font-bold bg-[#e8e4d9] text-[#6b5e50] px-2 py-0.5 rounded border border-[#b5a695]">調查品清單</span>
-              </label>
-              <VoiceTextSection
-                value={data.future}
-                onChange={v => updateData({ future: v })}
-                placeholder="為下個 Sprint 或長期目標的建議..."
-                fieldName="展望未來"
-                rows={3}
-                textareaClass="w-full mt-2 px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#b5a695]/50 shadow-inner font-medium text-[#3e362e] transition-all"
-              />
+            {/* 展望 20% */}
+            <div className="border border-[#E9E5DA] border-l-[3px] border-l-[#8B887E] rounded-xl overflow-hidden">
+              <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-4 py-3 flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-md bg-[#8B887E] flex items-center justify-center flex-shrink-0">
+                  <TrendingUp size={13} strokeWidth={2} className="text-white" />
+                </div>
+                <span className="text-sm font-semibold text-[#1F1D17]">展望未來</span>
+                <span className="text-[10px] font-mono bg-[#F1EEE6] text-[#8B887E] px-1.5 py-0.5 rounded">20%</span>
+                <span className="text-[10px] bg-[#F6F3EB] text-[#8B887E] border border-[#E9E5DA] px-2 py-0.5 rounded ml-0.5">調查品清單</span>
+              </div>
+              <div className="p-4">
+                <VoiceTextSection
+                  value={data.future}
+                  onChange={v => updateData({ future: v })}
+                  placeholder="為下個 Sprint 或長期目標的建議..."
+                  fieldName="展望未來"
+                  rows={3}
+                  textareaClass={taClass}
+                />
+              </div>
             </div>
 
           </div>
         </section>
 
-        <div className="flex justify-end pt-4">
-          <Link href="/retrospective" className="bg-[#e07a5f] text-white px-8 py-3 rounded-full font-bold text-lg hover:bg-[#c66147] hover:-translate-y-1 transition-all duration-200 shadow-lg border-2 border-[#8a4231] inline-flex items-center gap-2">
-            <span>🚂</span> 前往 Sprint Retrospective (回顧會議)
+        <div className="flex justify-end pt-2">
+          <Link
+            href="/retrospective"
+            className="inline-flex items-center gap-2 bg-[#C96442] text-white px-8 py-3 rounded-[9px] font-semibold text-sm hover:bg-[#7A3520] hover:shadow-md hover:-translate-y-[1px] transition-all duration-150"
+          >
+            前往 Sprint Retrospective (回顧會議) <ArrowRight size={16} strokeWidth={1.75} />
           </Link>
         </div>
 

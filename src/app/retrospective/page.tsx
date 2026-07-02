@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation';
 import SaveIndicator from '@/components/SaveIndicator';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import CountdownTimer from '@/components/CountdownTimer';
+import { BookOpen, Music, FileText, Sprout, AlertTriangle, Zap, Target, Play, Square, CheckCircle2, Save } from 'lucide-react';
 
 function parseYoutubeId(url: string): string | null {
   const match = url.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
@@ -23,6 +24,8 @@ function AutoGrowTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElemen
   useEffect(() => { resize(); }, [props.value]);
   return <textarea ref={ref} {...props} onInput={resize} />;
 }
+
+const taClass = "block w-full px-4 py-3 bg-white border border-[#E9E5DA] rounded-[9px] focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] text-[#1F1D17] text-sm placeholder:text-[#B5B2A6] resize-none min-h-[200px] overflow-hidden whitespace-pre-wrap break-words";
 
 export default function SprintRetrospective() {
   const [urlInput, setUrlInput] = useState('');
@@ -58,45 +61,57 @@ export default function SprintRetrospective() {
   });
 
   return (
-    <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
-      <div className="w-full space-y-8">
-        
-        <div className="flex items-center justify-between">
+    <main className="min-h-screen bg-[#FAF9F5] p-4 md:p-8 font-sans text-[#1F1D17]">
+      <div className="w-full space-y-6">
+
+        <div className="flex flex-col items-center">
           <Navigation />
           <SaveIndicator status={saveStatus} />
         </div>
 
-        {/* Loading Overlay */}
-        {loading && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"><div className="bg-white px-6 py-4 rounded-xl font-bold text-[#5b755e] shadow-xl text-lg flex items-center gap-3"><span>💾</span> <span>載入資料中...</span></div></div>}
-
-        {/* 頂部：會議目標 */}
-        <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl overflow-hidden relative">
-          <div className="bg-[#76a5af] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white tracking-wider flex items-center gap-2 drop-shadow-sm">
-            <span>🦉</span> <ScrumTooltip keyword="Sprint Retrospective" text="會議宗旨 (Sprint Retrospective)" />
-          </div>
-          <div className="p-6 bg-[#c2dce3]/30">
-            <div className="text-center font-bold text-[#467386] text-xl flex items-center justify-center gap-4">
-              <span>✨ 檢視 DoD + AC</span>
-              <span>•</span>
-              <span>✨ 增加產出品質</span>
-              <span>•</span>
-              <span>✨ 提升團隊效能</span>
+        {loading && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+            <div className="bg-white px-6 py-4 rounded-xl border border-[#E9E5DA] text-[#5A574E] shadow-xl text-sm flex items-center gap-3">
+              <Save size={15} strokeWidth={1.75} className="text-[#8B887E]" />
+              <span>載入資料中...</span>
             </div>
+          </div>
+        )}
+
+        {/* 會議宗旨 */}
+        <section className="bg-white border border-[#E9E5DA] rounded-xl overflow-hidden">
+          <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-5 py-3 flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-[#C96442] flex items-center justify-center flex-shrink-0">
+              <BookOpen size={13} strokeWidth={2} className="text-white" />
+            </div>
+            <span className="text-sm font-semibold text-[#1F1D17]">
+              <ScrumTooltip keyword="Sprint Retrospective" text="會議宗旨 (Sprint Retrospective)" />
+            </span>
+          </div>
+          <div className="px-5 py-4 flex flex-wrap items-center gap-x-6 gap-y-2">
+            {['檢視 DoD + AC', '增加產出品質', '提升團隊效能'].map((item, i) => (
+              <span key={i} className="flex items-center gap-1.5 text-sm text-[#5A574E] font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#C96442] flex-shrink-0" />
+                {item}
+              </span>
+            ))}
           </div>
         </section>
 
         {/* 背景音樂播放器 */}
-        <section className="bg-[#fffdf9] border-4 border-[#76a5af] rounded-3xl shadow-lg overflow-hidden">
-          <div className="bg-[#c2dce3] border-b-4 border-[#76a5af] p-4 flex items-center gap-2">
-            <span className="text-xl">🎵</span>
-            <span className="font-bold text-[#467386] text-lg">背景音樂</span>
-            <span className="text-sm text-[#5b8a98] font-normal ml-1">— 貼上 YouTube 連結，讓會議更輕鬆</span>
+        <section className="bg-white border border-[#E9E5DA] rounded-xl overflow-hidden">
+          <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-5 py-3 flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-[#467386] flex items-center justify-center flex-shrink-0">
+              <Music size={13} strokeWidth={2} className="text-white" />
+            </div>
+            <span className="text-sm font-semibold text-[#1F1D17]">背景音樂</span>
+            <span className="text-xs text-[#8B887E] ml-1">— 貼上 YouTube 連結，讓會議更輕鬆</span>
           </div>
-          <div className="p-5 flex flex-col gap-4">
-            <div className="flex gap-3 items-center flex-wrap">
+          <div className="p-5 flex flex-col gap-3">
+            <div className="flex gap-2 items-center flex-wrap">
               <input
                 type="text"
-                className="flex-1 min-w-[240px] px-4 py-2.5 bg-[#f5fbfc] border-2 border-[#a8cdd6] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#76a5af]/40 font-medium text-[#3e362e] text-sm"
+                className="flex-1 min-w-[240px] px-4 py-2.5 bg-white border border-[#E9E5DA] rounded-[9px] focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] text-[#1F1D17] text-sm placeholder:text-[#B5B2A6]"
                 placeholder="貼上 YouTube 連結，例如：https://www.youtube.com/watch?v=..."
                 value={urlInput}
                 onChange={e => { setUrlInput(e.target.value); setMusicError(''); }}
@@ -104,24 +119,26 @@ export default function SprintRetrospective() {
               />
               <button
                 onClick={handlePlayMusic}
-                className="bg-[#76a5af] text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-[#5b8a98] transition-colors shadow flex items-center gap-2 whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 bg-[#1F1D17] text-white px-4 py-2.5 rounded-[9px] text-sm font-semibold hover:bg-[#3D3B35] hover:shadow-sm hover:-translate-y-[1px] transition-all duration-150 whitespace-nowrap"
               >
-                ▶ 播放
+                <Play size={13} strokeWidth={2} /> 播放
               </button>
               {embedId && (
                 <button
                   onClick={handleStopMusic}
-                  className="bg-[#e07a5f] text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-[#c66147] transition-colors shadow flex items-center gap-2 whitespace-nowrap"
+                  className="inline-flex items-center gap-1.5 border border-[#B8543C] text-[#B8543C] px-4 py-2.5 rounded-[9px] text-sm font-semibold hover:bg-[#F0DDD3] hover:-translate-y-[1px] transition-all duration-150 whitespace-nowrap"
                 >
-                  ■ 停止
+                  <Square size={11} strokeWidth={2} /> 停止
                 </button>
               )}
             </div>
-            {musicError && <div className="text-sm text-[#c96262] font-bold">⚠ {musicError}</div>}
+            {musicError && (
+              <div className="text-xs text-[#B8543C]">⚠ {musicError}</div>
+            )}
             {embedId && (
               <>
-                <div className="flex items-center gap-2 text-sm font-bold text-[#467386]">
-                  <span className="inline-block w-2 h-2 rounded-full bg-[#76a5af] animate-pulse" />
+                <div className="flex items-center gap-2 text-xs text-[#5A574E]">
+                  <span className="inline-block w-2 h-2 rounded-full bg-[#C96442] animate-pulse" />
                   正在播放背景音樂中...
                 </div>
                 <iframe
@@ -139,14 +156,17 @@ export default function SprintRetrospective() {
         <CountdownTimer defaultMinutes={2} presets={[45, 90, 135, 180]} />
 
         {/* 上一次的行動 */}
-        <section className="bg-[#fffdf9] border-4 border-[#b08968] rounded-3xl shadow-lg overflow-hidden">
-          <div className="bg-[#e8d5b5] border-b-4 border-[#b08968] p-4 text-lg font-bold text-[#6b4423] flex items-center gap-2">
-            <span>📜</span> 上一次的行動
-            <span className="text-sm font-normal text-[#8b5a2b] ml-2">（回顧上個 Sprint 承諾的行動項目）</span>
+        <section className="bg-white border border-[#E9E5DA] rounded-xl overflow-hidden">
+          <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-5 py-3 flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-[#8B5A2B] flex items-center justify-center flex-shrink-0">
+              <FileText size={13} strokeWidth={2} className="text-white" />
+            </div>
+            <span className="text-sm font-semibold text-[#1F1D17]">上一次的行動</span>
+            <span className="text-xs text-[#8B887E] ml-1">（回顧上個 Sprint 承諾的行動項目）</span>
           </div>
-          <div className="p-6">
+          <div className="p-5">
             <AutoGrowTextarea
-              className="block w-full p-4 bg-[#fcf8f3] border-2 border-[#d4b896] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#b08968]/40 shadow-inner font-medium text-[#3e362e] resize-none min-h-[120px] overflow-hidden whitespace-pre-wrap break-words"
+              className="block w-full px-4 py-3 bg-white border border-[#E9E5DA] rounded-[9px] focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] text-[#1F1D17] text-sm placeholder:text-[#B5B2A6] resize-none min-h-[120px] overflow-hidden whitespace-pre-wrap break-words"
               placeholder="貼上或記錄上一次 Sprint 承諾的行動項目，作為本次回顧的對照基準..."
               value={data.previousActions}
               onChange={e => updateData({ previousActions: e.target.value })}
@@ -155,18 +175,23 @@ export default function SprintRetrospective() {
         </section>
 
         {/* 三大回顧區塊 */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
 
           {/* Keep / Start */}
-          <section className="bg-[#fffdf9] border-4 border-[#8fb996] rounded-3xl shadow-lg overflow-hidden hover:-translate-y-1 transition-transform">
-            <div className="bg-[#dcedc1] border-b-4 border-[#8fb996] p-4 text-center">
-              <div className="text-3xl mb-2">🌱</div>
-              <h2 className="text-xl font-bold text-[#4a7c59]">什麼做得好？</h2>
-              <div className="text-sm font-bold text-[#6b5e50] mt-1">(Keep / Start)</div>
+          <section className="bg-white border border-[#E9E5DA] border-l-[3px] border-l-[#4F7E5C] rounded-xl overflow-hidden hover:shadow-sm transition-all duration-150">
+            <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-4 py-3 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#4F7E5C] flex-shrink-0" />
+              <div className="w-6 h-6 rounded-md bg-[#4F7E5C] flex items-center justify-center flex-shrink-0">
+                <Sprout size={13} strokeWidth={2} className="text-white" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-[#1F1D17] leading-tight">什麼做得好？</div>
+                <div className="text-[10px] text-[#8B887E]">Keep / Start</div>
+              </div>
             </div>
-            <div className="p-6">
+            <div className="p-4">
               <AutoGrowTextarea
-                className="block w-full p-4 bg-[#f9fcf8] border-2 border-[#8fb996] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e] resize-none min-h-[250px] overflow-hidden whitespace-pre-wrap break-words"
+                className={taClass}
                 placeholder="記錄團隊本次表現優異、值得保留或開始嘗試的作法..."
                 value={data.keepStart}
                 onChange={e => updateData({ keepStart: e.target.value })}
@@ -175,15 +200,20 @@ export default function SprintRetrospective() {
           </section>
 
           {/* Problem / Stop */}
-          <section className="bg-[#fffdf9] border-4 border-[#c96262] rounded-3xl shadow-lg overflow-hidden hover:-translate-y-1 transition-transform">
-            <div className="bg-[#fceded] border-b-4 border-[#c96262] p-4 text-center">
-              <div className="text-3xl mb-2">🍂</div>
-              <h2 className="text-xl font-bold text-[#c96262]">什麼需要改善？</h2>
-              <div className="text-sm font-bold text-[#8a4231] mt-1">(Problem / Stop)</div>
+          <section className="bg-white border border-[#E9E5DA] border-l-[3px] border-l-[#B8543C] rounded-xl overflow-hidden hover:shadow-sm transition-all duration-150">
+            <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-4 py-3 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#B8543C] flex-shrink-0" />
+              <div className="w-6 h-6 rounded-md bg-[#B8543C] flex items-center justify-center flex-shrink-0">
+                <AlertTriangle size={13} strokeWidth={2} className="text-white" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-[#1F1D17] leading-tight">什麼需要改善？</div>
+                <div className="text-[10px] text-[#8B887E]">Problem / Stop</div>
+              </div>
             </div>
-            <div className="p-6">
+            <div className="p-4">
               <AutoGrowTextarea
-                className="block w-full p-4 bg-[#fdf8f8] border-2 border-[#e6b1b1] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#e6b1b1]/50 shadow-inner font-medium text-[#3e362e] resize-none min-h-[250px] overflow-hidden whitespace-pre-wrap break-words"
+                className={taClass}
                 placeholder="記錄遇到的阻礙、問題或需要停止的不良習慣..."
                 value={data.problemStop}
                 onChange={e => updateData({ problemStop: e.target.value })}
@@ -192,16 +222,20 @@ export default function SprintRetrospective() {
           </section>
 
           {/* Action Items */}
-          <section className="bg-[#fffdf9] border-4 border-[#d4a373] rounded-3xl shadow-lg overflow-hidden hover:-translate-y-1 transition-transform">
-            <div className="bg-[#f2e3c6] border-b-4 border-[#d4a373] p-4 text-center relative overflow-hidden">
-              <div className="absolute -top-2 -right-2 text-6xl opacity-20">⭐</div>
-              <div className="text-3xl mb-2 relative z-10">🚂</div>
-              <h2 className="text-xl font-bold text-[#8b5a2b] relative z-10">挑戰最大效益來改</h2>
-              <div className="text-sm font-bold text-[#6b5e50] mt-1 relative z-10">(Action Items)</div>
+          <section className="bg-white border border-[#E9E5DA] border-l-[3px] border-l-[#C96442] rounded-xl overflow-hidden hover:shadow-sm transition-all duration-150">
+            <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-4 py-3 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#C96442] flex-shrink-0" />
+              <div className="w-6 h-6 rounded-md bg-[#C96442] flex items-center justify-center flex-shrink-0">
+                <Zap size={13} strokeWidth={2} className="text-white" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-[#1F1D17] leading-tight">挑戰最大效益來改</div>
+                <div className="text-[10px] text-[#8B887E]">Action Items</div>
+              </div>
             </div>
-            <div className="p-6">
+            <div className="p-4">
               <AutoGrowTextarea
-                className="block w-full p-4 bg-[#fcfbf9] border-2 border-[#e8d5b5] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#d4a373]/50 shadow-inner font-medium text-[#3e362e] resize-none min-h-[250px] overflow-hidden whitespace-pre-wrap break-words"
+                className={taClass}
                 placeholder="列出下個 Sprint 的具體改進行動項目..."
                 value={data.actionItems}
                 onChange={e => updateData({ actionItems: e.target.value })}
@@ -212,14 +246,17 @@ export default function SprintRetrospective() {
         </div>
 
         {/* 下一個 Sprint 行動進度追蹤人 */}
-        <section className="bg-[#fffdf9] border-4 border-[#d4a373] rounded-3xl shadow-lg overflow-hidden">
-          <div className="bg-[#f2e3c6] border-b-4 border-[#d4a373] p-4 text-lg font-bold text-[#8b5a2b] flex items-center gap-2">
-            <span>🎯</span> 下一個 Sprint 行動進度追蹤人
+        <section className="bg-white border border-[#E9E5DA] rounded-xl overflow-hidden">
+          <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-5 py-3 flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-[#C96442] flex items-center justify-center flex-shrink-0">
+              <Target size={13} strokeWidth={2} className="text-white" />
+            </div>
+            <span className="text-sm font-semibold text-[#1F1D17]">下一個 Sprint 行動進度追蹤人</span>
           </div>
-          <div className="p-6">
+          <div className="p-5">
             <input
               type="text"
-              className="w-full px-4 py-3 bg-[#fcfbf9] border-2 border-[#e8d5b5] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#d4a373]/50 shadow-inner font-medium text-[#3e362e]"
+              className="w-full px-4 py-3 bg-white border border-[#E9E5DA] rounded-[9px] focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] text-[#1F1D17] text-sm placeholder:text-[#B5B2A6]"
               placeholder="輸入負責追蹤行動進度的成員名稱..."
               value={data.actionTracker}
               onChange={e => updateData({ actionTracker: e.target.value })}
@@ -227,12 +264,12 @@ export default function SprintRetrospective() {
           </div>
         </section>
 
-        <div className="flex justify-end pt-4">
-          <button className="bg-[#8fb996] text-white px-8 py-3 rounded-full font-bold text-lg hover:bg-[#78a07e] hover:-translate-y-1 transition-all duration-200 shadow-lg border-2 border-[#5b755e] inline-flex items-center gap-2">
-            <span>🎉</span> 結束本次 Sprint 並存檔
+        <div className="flex justify-end pt-2">
+          <button className="inline-flex items-center gap-2 bg-[#C96442] text-white px-8 py-3 rounded-[9px] font-semibold text-sm hover:bg-[#7A3520] hover:shadow-md hover:-translate-y-[1px] transition-all duration-150">
+            <CheckCircle2 size={16} strokeWidth={1.75} /> 結束本次 Sprint 並存檔
           </button>
         </div>
-        
+
       </div>
     </main>
   );
