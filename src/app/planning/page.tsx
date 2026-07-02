@@ -6,6 +6,13 @@ import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import { planningToSprintPlanning, isShallowEqualJSON, type RightPlanning } from '@/lib/planningSync';
+import {
+  Key, Mic, HelpCircle, Target, Wrench,
+  Zap, Plus, Sparkles, Trash2, Sprout,
+  ArrowRight, X, Square, Save,
+} from 'lucide-react';
+
+const AV_PAL = ['#C96442', '#4F7E5C', '#B8893A', '#467386', '#8B5A2B', '#5A574E'];
 
 export default function Home() {
   const [apiKey, setApiKey] = useState('');
@@ -193,11 +200,11 @@ export default function Home() {
       if (!ctx) return;
       analyser.getByteTimeDomainData(dataArray);
       const W = canvas.width; const H = canvas.height;
-      ctx.fillStyle = '#1a2e1f';
+      ctx.fillStyle = '#1F1D17';
       ctx.fillRect(0, 0, W, H);
       ctx.lineWidth = 2;
-      ctx.strokeStyle = '#8fb996';
-      ctx.shadowColor = '#8fb996';
+      ctx.strokeStyle = '#C96442';
+      ctx.shadowColor = '#C96442';
       ctx.shadowBlur = 4;
       ctx.beginPath();
       const sw = W / dataArray.length;
@@ -356,16 +363,16 @@ export default function Home() {
 
   const renderDynamicList = (items: { id: string; text: string }[], setter: React.Dispatch<React.SetStateAction<{ id: string; text: string }[]>>, placeholder: string, fieldType: 'WHY' | 'WHAT' | 'HOW') => {
     return (
-      <div className="flex-1 flex flex-col gap-4">
+      <div className="flex-1 flex flex-col gap-3">
         {items.map((item, index) => {
           const itemLoadingKey = `${fieldType}-${item.id}`;
           const isThisLoading = aiLoadingKey === itemLoadingKey;
           const isAnyLoading = aiLoadingKey !== null;
           return (
-          <div key={item.id} className="flex gap-3 items-start group">
+          <div key={item.id} className="flex gap-2 items-start group">
             <div className={`flex-1 relative transition-opacity ${isThisLoading ? 'opacity-70' : ''}`}>
               <textarea
-                className="w-full px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e] transition-all disabled:cursor-wait"
+                className="w-full px-3 py-2.5 bg-white border border-[#E9E5DA] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] font-sans text-sm text-[#1F1D17] transition-all disabled:cursor-wait resize-none"
                 placeholder={placeholder}
                 rows={2}
                 value={item.text}
@@ -377,43 +384,47 @@ export default function Home() {
                 }}
               />
               {isThisLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/40 backdrop-blur-[1px] rounded-xl pointer-events-none">
-                  <div className="flex items-center gap-2 bg-[#fffdf9] border-2 border-[#d1a3b4] text-[#9b596f] font-bold px-3 py-1.5 rounded-full shadow-sm text-sm">
-                    <span className="inline-block w-3 h-3 border-2 border-[#d1a3b4] border-t-transparent rounded-full animate-spin"></span>
-                    <span>✨ 潤飾中...</span>
+                <div className="absolute inset-0 flex items-center justify-center bg-white/50 backdrop-blur-[1px] rounded-lg pointer-events-none">
+                  <div className="flex items-center gap-2 bg-white border border-[#E9E5DA] text-[#C96442] px-3 py-1.5 rounded-full shadow-sm text-xs">
+                    <span className="inline-block w-3 h-3 border-2 border-[#C96442] border-t-transparent rounded-full animate-spin"></span>
+                    <span>潤飾中...</span>
                   </div>
                 </div>
               )}
             </div>
-            <div className="flex flex-col gap-2 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+            <div className="flex flex-col gap-1.5 shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
               <button
                 onClick={() => handleAiRewrite(setter, items, index, fieldType)}
                 disabled={isAnyLoading}
                 aria-busy={isThisLoading}
-                className={`px-3 py-2 rounded-lg text-xs font-bold border-2 transition-all flex items-center justify-center gap-1 shadow-sm min-w-[88px]
+                className={`px-2.5 py-1.5 rounded-lg text-xs border transition-all flex items-center justify-center gap-1 min-w-[80px]
                   ${isThisLoading
-                    ? 'bg-[#eac4d0] text-[#9b596f] border-[#d1a3b4] cursor-wait'
-                    : 'bg-[#f4e4e9] text-[#9b596f] hover:bg-[#eac4d0] border-[#d1a3b4]'}
-                  ${isAnyLoading && !isThisLoading ? 'opacity-50 cursor-not-allowed' : ''}
+                    ? 'border-[#C96442] text-[#C96442] bg-[#F5E4DA] cursor-wait'
+                    : 'border-[#C96442] text-[#C96442] hover:bg-[#F5E4DA]'}
+                  ${isAnyLoading && !isThisLoading ? 'opacity-40 cursor-not-allowed' : ''}
                 `}
                 title={isThisLoading ? '正在請 AI 潤飾，請稍候' : '使用魔法讓描述更精準'}
               >
                 {isThisLoading ? (
                   <>
-                    <span className="inline-block w-3 h-3 border-2 border-[#9b596f] border-t-transparent rounded-full animate-spin"></span>
+                    <span className="inline-block w-3 h-3 border-2 border-[#C96442] border-t-transparent rounded-full animate-spin"></span>
                     <span>潤飾中</span>
                   </>
                 ) : (
-                  <>✨ 魔法潤飾</>
+                  <>
+                    <Sparkles size={12} strokeWidth={1.75} />
+                    魔法潤飾
+                  </>
                 )}
               </button>
               {items.length > 1 && (
                 <button
                   onClick={() => setter(items.filter((_: { id: string; text: string }, i: number) => i !== index))}
                   disabled={isThisLoading}
-                  className="bg-[#fceded] text-[#c96262] hover:bg-[#f7d7d7] px-3 py-2 rounded-lg border-2 border-[#e6b1b1] text-xs font-bold transition-all flex items-center justify-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#B8543C] text-[#B8543C] text-xs hover:bg-[#F0DDD3] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  🧹 掃除
+                  <Trash2 size={12} strokeWidth={1.75} />
+                  掃除
                 </button>
               )}
             </div>
@@ -421,11 +432,12 @@ export default function Home() {
           );
         })}
         <div>
-          <button 
+          <button
             onClick={() => setter([...items, { id: Date.now().toString(), text: '' }])}
-            className="text-sm font-bold text-[#5b755e] hover:text-[#3d4f3f] flex items-center gap-1 px-4 py-2 bg-[#e8eedd] hover:bg-[#dcedc1] rounded-full border-2 border-[#a5c2a8] transition-all inline-flex shadow-sm"
+            className="flex items-center gap-1.5 text-sm text-[#8B887E] hover:text-[#C96442] px-4 py-2 border border-dashed border-[#D8D3C5] hover:border-[#C96442] rounded-lg transition-all duration-150"
           >
-            🌱 播種新欄位
+            <Sprout size={14} strokeWidth={1.75} />
+            播種新欄位
           </button>
         </div>
       </div>
@@ -433,74 +445,88 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-[#f4f1ea] p-8 font-serif text-[#3e362e] bg-[url('https://www.transparenttextures.com/patterns/rice-paper-2.png')]">
-      <div className="w-full space-y-8">
-        
+    <main className="min-h-screen bg-[#FAF9F5] p-8 font-sans text-[#1F1D17]">
+      <div className="w-full space-y-6">
+
         <Navigation />
 
         {/* API Key 設定區塊 */}
-        <div className="bg-[#fffdf9] border-2 border-[#b5a695] p-4 rounded-xl shadow-sm flex flex-col md:flex-row items-center gap-4">
-          <div className="font-bold text-[#8b5a2b] flex items-center gap-2 whitespace-nowrap">
-            <span>🔑</span> AI 魔法鑰匙 (API Key)：
+        <div className="bg-white border border-[#E9E5DA] p-4 rounded-[10px] flex flex-col md:flex-row items-center gap-4">
+          <div className="text-[#5A574E] font-medium flex items-center gap-2 whitespace-nowrap">
+            <Key size={15} strokeWidth={1.75} className="text-[#8B887E]" />
+            AI 魔法鑰匙 (API Key)：
           </div>
-          <input 
-            type="password" 
+          <input
+            type="password"
             value={apiKey}
             onChange={handleApiKeyChange}
-            className="flex-1 w-full px-4 py-2 bg-[#f4f1ea] border border-[#d3cbbd] rounded-lg focus:outline-none focus:border-[#8fb996] text-[#3e362e] font-sans"
+            className="flex-1 w-full px-4 py-2 bg-[#FAF9F5] border border-[#E9E5DA] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] text-[#1F1D17] font-sans text-sm"
             placeholder="請輸入您的 OpenAI API Key (sk-...)"
           />
-          <div className="text-xs text-[#8a7f72]">
+          <div className="text-xs text-[#8B887E] whitespace-nowrap">
             * 您的金鑰僅會儲存於本地瀏覽器中
           </div>
         </div>
 
         {/* Header 專案基本資訊 */}
-        <header className="bg-[#8fb996] border-4 border-[#5b755e] p-6 rounded-2xl shadow-lg relative overflow-hidden">
-          <div className="absolute top-0 right-0 opacity-20 transform translate-x-4 -translate-y-4">
-             <span className="text-9xl">🍃</span>
-          </div>
-          <div className="flex flex-col md:flex-row md:items-center gap-4 relative z-10">
-            <h1 className="text-3xl font-bold text-white drop-shadow-md whitespace-nowrap tracking-wider">專案名稱：</h1>
-            <input 
-              type="text" 
+        <header className="bg-white border border-[#E9E5DA] p-6 rounded-xl">
+          <div className="flex flex-col md:flex-row md:items-center gap-4">
+            <h1 className="text-xl font-semibold text-[#1F1D17] whitespace-nowrap">專案名稱：</h1>
+            <input
+              type="text"
               value={projectName}
               onChange={handleProjectNameChange}
-              className="flex-1 px-4 py-3 text-lg bg-[#fffdf9] border-2 border-[#5b755e] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner text-[#3e362e]"
+              className="flex-1 px-4 py-3 text-base bg-[#FAF9F5] border border-[#D8D3C5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] text-[#1F1D17]"
               placeholder="請輸入專案名稱..."
             />
           </div>
         </header>
 
         {/* Loading Overlay */}
-        {loading && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"><div className="bg-white px-6 py-4 rounded-xl font-bold text-[#5b755e] shadow-xl text-lg flex items-center gap-3"><span>💾</span> <span>載入資料中...</span></div></div>}
+        {loading && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+            <div className="bg-white px-6 py-4 rounded-xl border border-[#E9E5DA] text-[#5A574E] shadow-xl text-sm flex items-center gap-3">
+              <Save size={16} strokeWidth={1.75} className="text-[#8B887E]" />
+              <span>載入資料中...</span>
+            </div>
+          </div>
+        )}
 
         {/* Sprint Planning 模組 */}
-        <section className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-xl relative">
-          <div className="bg-[#d4a373] border-b-4 border-[#5b755e] p-4 text-xl font-bold text-white tracking-wider flex items-center gap-2 drop-shadow-sm">
-            <span>🍄</span> <ScrumTooltip keyword="Sprint Planning" text="Sprint Planning (Sprint 計畫)" />
+        <section className="bg-white border border-[#E9E5DA] rounded-xl overflow-hidden">
+          <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-5 py-4 flex items-center gap-3">
+            <div className="w-7 h-7 rounded-lg bg-[#C96442] flex items-center justify-center flex-shrink-0">
+              <Target size={14} strokeWidth={2} className="text-white" />
+            </div>
+            <h2 className="text-[15px] font-semibold text-[#1F1D17]">
+              <ScrumTooltip keyword="Sprint Planning" text="Sprint Planning (Sprint 計畫)" />
+            </h2>
           </div>
-          
+
           <div className="p-6 space-y-6">
             {/* 基礎資訊 */}
             <div className="flex flex-col lg:flex-row gap-6">
               {/* 左側 3 個欄位 */}
-              <div className="flex-1 flex flex-col gap-6">
-                <div className="flex flex-col gap-2">
-                  <label className="font-bold text-[#6b5e50]">目的</label>
-                  <div className="px-4 py-3 bg-[#e8e4d9] border-2 border-[#b5a695] rounded-xl text-[#3e362e] shadow-inner font-medium">
+              <div className="flex-1 flex flex-col gap-5">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-[#5A574E]">目的</label>
+                  <div className="px-3 py-2.5 bg-[#F6F3EB] border border-[#E9E5DA] rounded-lg text-[#1F1D17] text-sm">
                     建立共識並敲定行動計畫
                   </div>
                 </div>
-                
-                <div className="flex flex-col gap-2">
-                  <label className="font-bold text-[#6b5e50]">時間限制 (TIME)</label>
-                  <select className="px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]" value={data.timeLimit} onChange={e => {
-                    const val = e.target.value;
-                    updateData({ timeLimit: val });
-                    const days = val === '30d' ? 30 : Number(val) * 7;
-                    if (days > 0) localStorage.setItem('sprintDays', String(days));
-                  }}>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-[#5A574E]">時間限制 (TIME)</label>
+                  <select
+                    className="px-3 py-2.5 bg-white border border-[#E9E5DA] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] text-sm text-[#1F1D17]"
+                    value={data.timeLimit}
+                    onChange={e => {
+                      const val = e.target.value;
+                      updateData({ timeLimit: val });
+                      const days = val === '30d' ? 30 : Number(val) * 7;
+                      if (days > 0) localStorage.setItem('sprintDays', String(days));
+                    }}
+                  >
                     <option value="1">1 週 (≤ 2 小時)</option>
                     <option value="2">2 週 (≤ 4 小時)</option>
                     <option value="3">3 週 (≤ 6 小時)</option>
@@ -509,15 +535,20 @@ export default function Home() {
                   </select>
                 </div>
 
-                <div className="flex flex-col gap-2">
-                  <label className="font-bold text-[#6b5e50]">開始日</label>
-                  <input type="date" value={data.startDate} onChange={e => updateData({ startDate: e.target.value })} className="px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]" />
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium text-[#5A574E]">開始日</label>
+                  <input
+                    type="date"
+                    value={data.startDate}
+                    onChange={e => updateData({ startDate: e.target.value })}
+                    className="px-3 py-2.5 bg-white border border-[#E9E5DA] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] text-sm text-[#1F1D17]"
+                  />
                 </div>
               </div>
 
               {/* 右側：與會人 */}
               <div className="flex-1 flex flex-col gap-4">
-                <label className="font-bold text-[#6b5e50]">與會人</label>
+                <label className="text-sm font-medium text-[#5A574E]">與會人</label>
 
                 {/* datalist for member suggestions */}
                 <datalist id="org-members-list">
@@ -526,28 +557,47 @@ export default function Home() {
 
                 {/* PO / SM */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <div className="text-sm font-bold text-[#6b5e50]"><ScrumTooltip keyword="PO" text="Product Owner" /> <span className="text-[#c96262]">*</span></div>
-                    <input list="org-members-list" type="text" value={data.po || ''} onChange={e => updateData({ po: e.target.value })} className="px-3 py-2 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner text-[#3e362e]" placeholder={orgTeam.length > 0 ? '輸入或從成員庫選取...' : 'PO 姓名'} />
+                  <div className="flex flex-col gap-1.5">
+                    <div className="text-sm font-medium text-[#5A574E]">
+                      <ScrumTooltip keyword="PO" text="Product Owner" /> <span className="text-[#B8543C]">*</span>
+                    </div>
+                    <input
+                      list="org-members-list"
+                      type="text"
+                      value={data.po || ''}
+                      onChange={e => updateData({ po: e.target.value })}
+                      className="px-3 py-2.5 bg-white border border-[#E9E5DA] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] text-sm text-[#1F1D17]"
+                      placeholder={orgTeam.length > 0 ? '輸入或從成員庫選取...' : 'PO 姓名'}
+                    />
                   </div>
-                  <div className="flex flex-col gap-2">
-                    <div className="text-sm font-bold text-[#6b5e50]"><ScrumTooltip keyword="SM" text="Scrum Master" /> <span className="text-[#c96262]">*</span></div>
-                    <input list="org-members-list" type="text" value={data.sm || ''} onChange={e => updateData({ sm: e.target.value })} className="px-3 py-2 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner text-[#3e362e]" placeholder={orgTeam.length > 0 ? '輸入或從成員庫選取...' : 'SM 姓名'} />
+                  <div className="flex flex-col gap-1.5">
+                    <div className="text-sm font-medium text-[#5A574E]">
+                      <ScrumTooltip keyword="SM" text="Scrum Master" /> <span className="text-[#B8543C]">*</span>
+                    </div>
+                    <input
+                      list="org-members-list"
+                      type="text"
+                      value={data.sm || ''}
+                      onChange={e => updateData({ sm: e.target.value })}
+                      className="px-3 py-2.5 bg-white border border-[#E9E5DA] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] text-sm text-[#1F1D17]"
+                      placeholder={orgTeam.length > 0 ? '輸入或從成員庫選取...' : 'SM 姓名'}
+                    />
                   </div>
                 </div>
 
                 {/* 開發團隊 */}
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between">
-                    <div className="text-sm font-bold text-[#6b5e50]"><ScrumTooltip keyword="DEVS" text="開發團隊" /></div>
+                    <div className="text-sm font-medium text-[#5A574E]"><ScrumTooltip keyword="DEVS" text="開發團隊" /></div>
                     <div className="flex items-center gap-2">
-                      <div className="text-xs text-[#8a7f72]">{(data.devsList || []).filter(d => (d.name || '').trim()).length} 位</div>
+                      <div className="text-xs text-[#8B887E]">{(data.devsList || []).filter(d => (d.name || '').trim()).length} 位</div>
                       {orgTeam.length > 0 && (
                         <button
                           onClick={() => setShowDevPicker(prev => !prev)}
-                          className="text-xs font-bold text-[#5b755e] hover:text-[#3d4f3f] bg-[#e8eedd] hover:bg-[#dcedc1] px-2 py-0.5 rounded-full border border-[#a5c2a8] transition-all"
+                          className="flex items-center gap-1 text-xs text-[#5A574E] hover:text-[#C96442] bg-white border border-[#E9E5DA] px-2.5 py-1 rounded-lg transition-all hover:-translate-y-[1px] hover:shadow-sm duration-150"
                         >
-                          ⚡ 從成員庫選
+                          <Zap size={11} strokeWidth={1.75} />
+                          從成員庫選
                         </button>
                       )}
                     </div>
@@ -555,8 +605,8 @@ export default function Home() {
 
                   {/* 成員庫快選面板 */}
                   {showDevPicker && orgTeam.length > 0 && (
-                    <div className="bg-[#f4f1ea] border-2 border-[#a5c2a8] rounded-xl p-3 flex flex-wrap gap-2">
-                      {orgTeam.map(m => {
+                    <div className="bg-[#F6F3EB] border border-[#E9E5DA] rounded-lg p-3 flex flex-wrap gap-2">
+                      {orgTeam.map((m, mi) => {
                         const alreadyAdded = (data.devsList || []).some(d => d.name === m.name);
                         return (
                           <button
@@ -567,135 +617,149 @@ export default function Home() {
                               syncDevsString(list);
                             }}
                             disabled={alreadyAdded}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold border-2 transition-all
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition-all
                               ${alreadyAdded
-                                ? 'bg-[#8fb996] border-[#5b755e] text-white cursor-default'
-                                : 'bg-white border-[#a5c2a8] text-[#3e362e] hover:bg-[#dcedc1] hover:border-[#5b755e]'
+                                ? 'bg-[#F1EEE6] border-[#D8D3C5] text-[#8B887E] cursor-default'
+                                : 'bg-white border-[#E9E5DA] text-[#1F1D17] hover:border-[#C96442] hover:text-[#C96442]'
                               }`}
                             title={alreadyAdded ? '已加入' : `加入 ${m.name}`}
                           >
-                            <span className="w-5 h-5 rounded-full bg-[#8fb996] text-white text-xs flex items-center justify-center flex-shrink-0">{(m.name || '?').slice(0, 1)}</span>
-                            {m.name}{m.role ? <span className="font-normal opacity-70">・{m.role}</span> : null}
-                            {alreadyAdded && <span className="text-white text-xs">✓</span>}
+                            <span
+                              className="w-5 h-5 rounded-full text-white text-xs flex items-center justify-center flex-shrink-0"
+                              style={{ backgroundColor: AV_PAL[mi % AV_PAL.length] }}
+                            >
+                              {(m.name || '?').slice(0, 1)}
+                            </span>
+                            {m.name}{m.role ? <span className="text-[#8B887E]">・{m.role}</span> : null}
+                            {alreadyAdded && <span className="text-[#4F7E5C] text-xs">✓</span>}
                           </button>
                         );
                       })}
                       <button
                         onClick={() => setShowDevPicker(false)}
-                        className="text-xs text-[#8a7f72] hover:text-[#3e362e] px-2 py-1 ml-auto"
+                        className="text-xs text-[#8B887E] hover:text-[#1F1D17] px-2 py-1 ml-auto"
                       >
                         收起
                       </button>
                     </div>
                   )}
 
-                  <div className="bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl shadow-inner divide-y-2 divide-[#e8e4d9]">
+                  <div className="bg-white border border-[#E9E5DA] rounded-lg divide-y divide-[#E9E5DA]">
                     {(data.devsList || []).map((dev, i) => (
                       <div key={dev.id} className="flex items-center gap-2 px-3 py-2">
+                        <span
+                          className="w-7 h-7 rounded-full text-white text-xs font-semibold flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: AV_PAL[i % AV_PAL.length] }}
+                        >
+                          {(dev.name || '?').slice(0, 1) || '?'}
+                        </span>
                         <input
                           type="text"
                           value={dev.name}
                           onChange={e => updateDev(i, 'name', e.target.value)}
-                          className="flex-1 min-w-0 bg-transparent border-b-2 border-transparent focus:border-[#8fb996] outline-none text-[#3e362e] placeholder-[#a89e92]"
+                          className="flex-1 min-w-0 bg-transparent border-b border-transparent focus:border-[#C96442] outline-none text-sm text-[#1F1D17] placeholder-[#B5B2A6]"
                           placeholder="姓名"
                         />
                         <input
                           type="text"
                           value={dev.role}
                           onChange={e => updateDev(i, 'role', e.target.value)}
-                          className="w-32 bg-transparent border-b-2 border-transparent focus:border-[#8fb996] outline-none text-sm text-[#6b5e50] placeholder-[#a89e92]"
+                          className="w-32 bg-transparent border-b border-transparent focus:border-[#C96442] outline-none text-xs text-[#8B887E] placeholder-[#B5B2A6]"
                           placeholder="角色（例：Tech Lead）"
                         />
                         <button
                           onClick={() => removeDev(i)}
-                          className="text-[#c96262] hover:bg-[#fceded] px-2 py-1 rounded text-sm shrink-0"
+                          className="text-[#B5B2A6] hover:text-[#B8543C] px-1.5 py-1 rounded transition-colors shrink-0"
                           title="移除這位成員"
                         >
-                          ✕
+                          <X size={14} strokeWidth={1.75} />
                         </button>
                       </div>
                     ))}
                   </div>
                   <button
                     onClick={addDev}
-                    className="self-start text-sm font-bold text-[#5b755e] hover:text-[#3d4f3f] flex items-center gap-1 px-3 py-1.5 bg-[#e8eedd] hover:bg-[#dcedc1] rounded-full border-2 border-[#a5c2a8] transition-all shadow-sm"
+                    className="self-start flex items-center gap-1.5 text-sm text-[#5A574E] hover:text-[#C96442] px-3 py-1.5 bg-white border border-[#E9E5DA] rounded-lg hover:border-[#C96442] hover:-translate-y-[1px] hover:shadow-sm transition-all duration-150"
                   >
-                    ＋ 新增成員
+                    <Plus size={14} strokeWidth={1.75} />
+                    新增成員
                   </button>
                 </div>
 
                 {/* 利害關係人 / 專家 */}
-                <div className="flex flex-col gap-2">
-                  <div className="text-sm font-bold text-[#6b5e50]">利害關係人 / 專家（選填）</div>
+                <div className="flex flex-col gap-1.5">
+                  <div className="text-sm font-medium text-[#5A574E]">利害關係人 / 專家（選填）</div>
                   <textarea
                     value={data.stakeholders}
                     onChange={e => updateData({ stakeholders: e.target.value })}
                     rows={3}
-                    className="px-3 py-2 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner text-[#3e362e] resize-none"
+                    className="px-3 py-2.5 bg-white border border-[#E9E5DA] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] text-sm text-[#1F1D17] resize-none"
                     placeholder="一行一位，例如：&#10;陳副總（主要贊助人）&#10;Globex IT 部門（客戶代表）"
                   />
-                  <div className="text-xs text-[#8a7f72]">一行一位，可加註角色，例如「王經理（客戶代表）」</div>
+                  <div className="text-xs text-[#8B887E]">一行一位，可加註角色，例如「王經理（客戶代表）」</div>
                 </div>
               </div>
             </div>
 
+            {/* 初步想法 */}
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <label className="font-bold text-[#6b5e50]">初步想法 (PO提出)</label>
+                <label className="text-sm font-medium text-[#5A574E]">初步想法 (PO提出)</label>
                 <button
                   onClick={() => { resetVoice(); setShowVoiceModal(true); }}
-                  className="flex items-center gap-1.5 text-xs font-bold text-[#5b755e] bg-[#e8eedd] border-2 border-[#8fb996] px-2.5 py-1 rounded-lg hover:bg-[#dcedc1] transition-all"
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-[#C96442] text-[#C96442] rounded-lg hover:bg-[#F5E4DA] hover:-translate-y-[1px] transition-all duration-150"
                 >
-                  🎙️ 語音輸入
+                  <Mic size={13} strokeWidth={1.75} />
+                  語音輸入
                 </button>
               </div>
               <textarea
                 value={data.poIdea}
                 onChange={e => updateData({ poIdea: e.target.value })}
                 rows={2}
-                className="w-full px-4 py-3 bg-[#fffdf9] border-2 border-[#b5a695] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#8fb996]/50 shadow-inner font-medium text-[#3e362e]"
+                className="w-full px-3 py-2.5 bg-white border border-[#E9E5DA] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] text-sm text-[#1F1D17] resize-none"
                 placeholder="請輸入初步想法..."
               />
             </div>
 
             {/* 核心規劃矩陣 */}
-            <div className="mt-8 border-t-2 border-[#d3cbbd] pt-8">
-              <h3 className="font-bold text-2xl mb-6 text-[#5b755e] flex items-center gap-2">
-                <span>🌱</span> 核心規劃矩陣
+            <div className="mt-6 pt-6 border-t border-[#E9E5DA]">
+              <h3 className="font-semibold text-lg mb-5 text-[#1F1D17]">
+                核心規劃矩陣
               </h3>
-              
-              <div className="space-y-6">
-                
+
+              <div className="space-y-5">
+
                 {/* WHY */}
                 <div className="flex flex-col lg:flex-row gap-4">
-                  <div className="lg:w-64 bg-[#f2e3c6] p-4 flex flex-col items-center justify-center border-2 border-[#d4a373] rounded-2xl text-center shrink-0 shadow-sm relative">
-                    <div className="absolute -bottom-2 -right-2 text-4xl opacity-20">☀️</div>
-                    <div className="font-bold text-2xl mb-2 text-[#8b5a2b]"><ScrumTooltip keyword="WHY" text="WHY" /></div>
-                    <div className="text-sm font-bold text-[#6b5e50]">[為什麼這個 Sprint 有價值？]</div>
-                    <div className="text-sm font-bold text-[#4a7c59] mt-1">[驗證技術可行性]</div>
+                  <div className="lg:w-60 bg-white border border-[#E9E5DA] border-l-[3px] border-l-[#B8893A] p-4 flex flex-col items-center justify-center rounded-xl text-center shrink-0">
+                    <HelpCircle size={20} strokeWidth={1.75} className="text-[#B8893A] mb-2" />
+                    <div className="font-semibold text-lg mb-1 text-[#1F1D17]"><ScrumTooltip keyword="WHY" text="WHY" /></div>
+                    <div className="text-xs text-[#8B887E]">[為什麼這個 Sprint 有價值？]</div>
+                    <div className="text-xs text-[#5A574E] mt-1">[驗證技術可行性]</div>
                   </div>
                   {renderDynamicList(data.whys, (newItems) => updateData({ whys: typeof newItems === 'function' ? newItems(data.whys) : newItems }), "請輸入價值描述...", 'WHY')}
                 </div>
 
                 {/* WHAT */}
-                <div className="flex flex-col lg:flex-row gap-4 mt-6">
-                  <div className="lg:w-64 bg-[#dcedc1] p-4 flex flex-col items-center justify-center border-2 border-[#8fb996] rounded-2xl text-center shrink-0 shadow-sm relative">
-                    <div className="absolute -bottom-2 -left-2 text-4xl opacity-20">🌲</div>
-                    <div className="font-bold text-2xl mb-2 text-[#5b755e]"><ScrumTooltip keyword="WHAT" text="WHAT" /></div>
-                    <div className="text-sm font-bold text-[#6b5e50]">[這個 Sprint 能完成什麼？]</div>
-                    <div className="text-sm font-bold text-[#4a7c59] mt-1">[具體化的功能模組]</div>
-                    <div className="text-sm font-bold text-[#c06c55] mt-1">(Sprint Backlog基礎)</div>
+                <div className="flex flex-col lg:flex-row gap-4">
+                  <div className="lg:w-60 bg-white border border-[#E9E5DA] border-l-[3px] border-l-[#C96442] p-4 flex flex-col items-center justify-center rounded-xl text-center shrink-0">
+                    <Target size={20} strokeWidth={1.75} className="text-[#C96442] mb-2" />
+                    <div className="font-semibold text-lg mb-1 text-[#1F1D17]"><ScrumTooltip keyword="WHAT" text="WHAT" /></div>
+                    <div className="text-xs text-[#8B887E]">[這個 Sprint 能完成什麼？]</div>
+                    <div className="text-xs text-[#5A574E] mt-1">[具體化的功能模組]</div>
+                    <div className="text-xs text-[#B8543C] mt-1">(Sprint Backlog基礎)</div>
                   </div>
                   {renderDynamicList(data.whats, (newItems) => updateData({ whats: typeof newItems === 'function' ? newItems(data.whats) : newItems }), "請輸入具體功能模組...", 'WHAT')}
                 </div>
 
                 {/* HOW */}
-                <div className="flex flex-col lg:flex-row gap-4 mt-6">
-                  <div className="lg:w-64 bg-[#c2dce3] p-4 flex flex-col items-center justify-center border-2 border-[#76a5af] rounded-2xl text-center shrink-0 shadow-sm relative">
-                    <div className="absolute -top-2 -right-2 text-4xl opacity-20">☁️</div>
-                    <div className="font-bold text-2xl mb-2 text-[#467386]"><ScrumTooltip keyword="HOW" text="HOW" /></div>
-                    <div className="text-sm font-bold text-[#6b5e50]">[工作將如何完成？]</div>
-                    <div className="text-sm font-bold text-[#4a7c59] mt-1">[思考如何串接這些工具]</div>
+                <div className="flex flex-col lg:flex-row gap-4">
+                  <div className="lg:w-60 bg-white border border-[#E9E5DA] border-l-[3px] border-l-[#8B887E] p-4 flex flex-col items-center justify-center rounded-xl text-center shrink-0">
+                    <Wrench size={20} strokeWidth={1.75} className="text-[#8B887E] mb-2" />
+                    <div className="font-semibold text-lg mb-1 text-[#1F1D17]"><ScrumTooltip keyword="HOW" text="HOW" /></div>
+                    <div className="text-xs text-[#8B887E]">[工作將如何完成？]</div>
+                    <div className="text-xs text-[#5A574E] mt-1">[思考如何串接這些工具]</div>
                   </div>
                   {renderDynamicList(data.hows, (newItems) => updateData({ hows: typeof newItems === 'function' ? newItems(data.hows) : newItems }), "請輸入工作方式與工具...", 'HOW')}
                 </div>
@@ -703,9 +767,13 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="flex justify-end pt-8">
-              <Link href="/backlog" className="bg-[#e07a5f] text-white px-8 py-3 rounded-full font-bold text-lg hover:bg-[#c66147] hover:-translate-y-1 transition-all duration-200 shadow-lg border-2 border-[#8a4231] inline-block text-center flex items-center gap-2">
-                <span>🚂</span> 儲存計畫並前往 Backlog
+            <div className="flex justify-end pt-6">
+              <Link
+                href="/backlog"
+                className="inline-flex items-center gap-2 bg-[#C96442] text-white px-8 py-3 rounded-[9px] font-semibold text-sm hover:bg-[#7A3520] hover:shadow-md hover:-translate-y-[1px] transition-all duration-150"
+              >
+                儲存計畫並前往 Backlog
+                <ArrowRight size={16} strokeWidth={1.75} />
               </Link>
             </div>
           </div>
@@ -716,10 +784,15 @@ export default function Home() {
       {/* 語音輸入 Modal */}
       {showVoiceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => { resetVoice(); setShowVoiceModal(false); }}>
-          <div className="bg-[#fffdf9] border-4 border-[#5b755e] rounded-3xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="bg-[#5b755e] text-white px-6 py-4 rounded-t-2xl flex items-center justify-between flex-shrink-0">
-              <h2 className="font-bold text-lg">🎙️ 語音輸入 — 初步想法</h2>
-              <button onClick={() => { resetVoice(); setShowVoiceModal(false); }} className="text-white/70 hover:text-white text-xl font-bold">✕</button>
+          <div className="bg-white border border-[#E9E5DA] rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="bg-white border-b border-[#E9E5DA] px-6 py-4 rounded-t-xl flex items-center justify-between flex-shrink-0">
+              <h2 className="font-semibold text-[#1F1D17] flex items-center gap-2">
+                <Mic size={16} strokeWidth={1.75} className="text-[#8B887E]" />
+                語音輸入 — 初步想法
+              </h2>
+              <button onClick={() => { resetVoice(); setShowVoiceModal(false); }} className="text-[#8B887E] hover:text-[#1F1D17] transition-colors">
+                <X size={18} strokeWidth={1.75} />
+              </button>
             </div>
 
             <div className="overflow-y-auto flex-1 p-5 space-y-4">
@@ -729,20 +802,31 @@ export default function Home() {
                   <>
                     {isRecording ? (
                       <>
-                        <canvas ref={voiceCanvasRef} width={500} height={48} className="w-full rounded-xl border-2 border-[#5b755e] bg-[#1a2e1f]" />
+                        <canvas ref={voiceCanvasRef} width={500} height={48} className="w-full rounded-lg border border-[#E9E5DA] bg-[#1F1D17]" />
                         <div className="flex items-center gap-3">
-                          <div className="text-lg font-mono text-red-500 font-bold animate-pulse">⏺ {formatRecordTime(recordingTime)}</div>
-                          <button onClick={stopRecording} className="bg-red-500 hover:bg-red-600 text-white font-bold px-5 py-2.5 rounded-full shadow-md transition-all active:scale-95">
-                            ⏹ 停止錄音
+                          <div className="flex items-center gap-1.5 text-sm font-mono text-red-500 font-semibold">
+                            <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                            {formatRecordTime(recordingTime)}
+                          </div>
+                          <button
+                            onClick={stopRecording}
+                            className="flex items-center gap-1.5 border border-[#B8543C] text-[#B8543C] font-semibold px-5 py-2 rounded-lg hover:bg-[#F0DDD3] transition-all"
+                          >
+                            <Square size={14} strokeWidth={1.75} />
+                            停止錄音
                           </button>
                         </div>
                       </>
                     ) : (
-                      <button onClick={startRecording} className="bg-[#e07a5f] hover:bg-[#c66147] text-white font-bold px-6 py-3 rounded-full shadow-md transition-all active:scale-95 flex items-center gap-2 text-base">
-                        🎙️ 開始錄音
+                      <button
+                        onClick={startRecording}
+                        className="flex items-center gap-2 bg-[#C96442] hover:bg-[#7A3520] text-white font-semibold px-6 py-3 rounded-lg shadow-sm transition-all active:scale-95 text-sm"
+                      >
+                        <Mic size={16} strokeWidth={1.75} />
+                        開始錄音
                       </button>
                     )}
-                    <div className="text-xs text-[#8a7f72]">請確認瀏覽器已允許麥克風存取</div>
+                    <div className="text-xs text-[#8B887E]">請確認瀏覽器已允許麥克風存取</div>
                   </>
                 ) : (
                   <div className="w-full space-y-3">
@@ -750,7 +834,7 @@ export default function Home() {
                       <audio src={audioUrl} controls className="flex-1 h-10" />
                       <button
                         onClick={() => { setRecordedBlob(null); setAudioUrl(''); setVoiceTranscript(''); setVoiceSummaries({ 精簡: '', 中等: '', 詳述: '' }); }}
-                        className="text-xs text-[#8a7f72] hover:text-[#3e362e] border border-[#d3cbbd] px-2 py-1 rounded-lg whitespace-nowrap"
+                        className="text-xs text-[#8B887E] hover:text-[#1F1D17] border border-[#E9E5DA] px-2.5 py-1.5 rounded-lg whitespace-nowrap transition-colors"
                       >
                         重新錄
                       </button>
@@ -759,11 +843,11 @@ export default function Home() {
                       <button
                         onClick={handleTranscribe}
                         disabled={isTranscribing}
-                        className="w-full bg-[#5b755e] hover:bg-[#4a6250] disabled:opacity-50 text-white font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2"
+                        className="w-full bg-[#C96442] hover:bg-[#7A3520] disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-all flex items-center justify-center gap-2 text-sm"
                       >
                         {isTranscribing
                           ? <><span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />AI 轉錄中...</>
-                          : '✨ AI 轉錄 & 解析'}
+                          : <><Sparkles size={15} strokeWidth={1.75} />AI 轉錄 & 解析</>}
                       </button>
                     )}
                   </div>
@@ -772,46 +856,48 @@ export default function Home() {
 
               {/* 原始轉錄 */}
               {voiceTranscript && (
-                <div className="bg-[#f4f1ea] border border-[#d3cbbd] rounded-xl p-3">
+                <div className="bg-[#F6F3EB] border border-[#E9E5DA] rounded-lg p-3">
                   <div className="flex items-center justify-between mb-1">
-                    <div className="text-xs font-bold text-[#8a7f72]">原始轉錄文字</div>
+                    <div className="text-xs font-medium text-[#8B887E]">原始轉錄文字</div>
                     <button
                       onClick={() => { updateData({ poIdea: voiceTranscript }); setShowVoiceModal(false); }}
-                      className="text-xs text-[#5b755e] border border-[#8fb996] px-2 py-0.5 rounded-lg hover:bg-[#e8eedd]"
+                      className="text-xs text-[#C96442] border border-[#C96442] px-2 py-0.5 rounded-lg hover:bg-[#F5E4DA] transition-colors"
                     >
                       使用原文
                     </button>
                   </div>
-                  <div className="text-sm text-[#3e362e] leading-relaxed">{voiceTranscript}</div>
+                  <div className="text-sm text-[#1F1D17] leading-relaxed">{voiceTranscript}</div>
                 </div>
               )}
 
               {/* AI 摘要三等級 */}
               {voiceTranscript && (
-                <div className="space-y-3">
-                  <div className="text-xs font-bold text-[#6b5e50] uppercase tracking-wide">AI 摘要等級</div>
+                <div className="space-y-2.5">
+                  <div className="text-xs font-medium text-[#8B887E] uppercase tracking-wide">AI 摘要等級</div>
                   {(['精簡', '中等', '詳述'] as const).map(level => (
-                    <div key={level} className="bg-[#fffdf9] border-2 border-[#d3cbbd] rounded-xl p-3">
+                    <div key={level} className="bg-white border border-[#E9E5DA] rounded-[10px] p-3">
                       <div className="flex items-center justify-between mb-1.5">
-                        <div className="text-xs font-bold text-[#5b755e]">{level === '精簡' ? '🌿 精簡' : level === '中等' ? '🌱 中等' : '📖 詳述'}</div>
+                        <div className="text-xs font-medium text-[#5A574E]">
+                          {level === '精簡' ? '🌿 精簡' : level === '中等' ? '🌱 中等' : '📖 詳述'}
+                        </div>
                         {voiceSummaries[level] && !voiceSummaryLoading[level] && (
                           <button
                             onClick={() => { updateData({ poIdea: voiceSummaries[level] }); setShowVoiceModal(false); }}
-                            className="text-xs bg-[#5b755e] text-white px-2.5 py-1 rounded-lg hover:bg-[#4a6250] transition-all"
+                            className="text-xs bg-[#C96442] text-white px-2.5 py-0.5 rounded-lg hover:bg-[#7A3520] transition-all"
                           >
                             使用此版本
                           </button>
                         )}
                       </div>
                       {voiceSummaryLoading[level] ? (
-                        <div className="flex items-center gap-2 text-xs text-[#8a7f72]">
-                          <span className="inline-block w-3 h-3 border-2 border-[#8fb996] border-t-transparent rounded-full animate-spin" />
+                        <div className="flex items-center gap-2 text-xs text-[#8B887E]">
+                          <span className="inline-block w-3 h-3 border-2 border-[#C96442] border-t-transparent rounded-full animate-spin" />
                           生成中...
                         </div>
                       ) : voiceSummaries[level] ? (
-                        <div className="text-sm text-[#3e362e] leading-relaxed whitespace-pre-wrap">{voiceSummaries[level]}</div>
+                        <div className="text-sm text-[#1F1D17] leading-relaxed whitespace-pre-wrap">{voiceSummaries[level]}</div>
                       ) : (
-                        <div className="text-xs text-[#b5a695]">—</div>
+                        <div className="text-xs text-[#B5B2A6]">—</div>
                       )}
                     </div>
                   ))}
