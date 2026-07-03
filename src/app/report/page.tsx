@@ -107,9 +107,10 @@ function fmtDate(d: string): string {
   return d.slice(0, 6);
 }
 
-function TrendCharts({ data, completedCount, totalCount }: { data: ChartPoint[]; completedCount: number; totalCount: number }) {
+function TrendCharts({ data, completedCount, totalCount, sprints }: { data: ChartPoint[]; completedCount: number; totalCount: number; sprints?: SprintDoc[] }) {
   const hasTasks = data.some(d => d.taskCount > 0);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
   if (!hasTasks) return null;
 
   const W = 720, H = 260;
@@ -398,7 +399,7 @@ function TrendCharts({ data, completedCount, totalCount }: { data: ChartPoint[];
 
       {/* 各 Sprint 關鍵數據表 */}
       <div className="px-6 pb-5 pt-2">
-        <div className="text-[10px] font-semibold text-[#8B887E] uppercase tracking-widest mb-2">各 Sprint 關鍵數據</div>
+        <div className="text-[10px] font-semibold text-[#8B887E] uppercase tracking-widest mb-2">各 Sprint 關鍵數據 <span className="font-normal text-[#B5B2A6] normal-case tracking-normal">· 點擊列展開任務明細</span></div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs border-collapse">
             <thead>
@@ -413,38 +414,131 @@ function TrendCharts({ data, completedCount, totalCount }: { data: ChartPoint[];
               </tr>
             </thead>
             <tbody>
-              {data.map((d, i) => (
-                <tr key={d.label} className={i % 2 === 0 ? 'bg-[#FAF9F5]' : 'bg-white'}>
-                  <td className="px-3 py-2 font-semibold text-[#C96442] whitespace-nowrap">{d.label}</td>
-                  <td className="px-3 py-2 text-[#1F1D17]">{d.fullName}</td>
-                  <td className="px-3 py-2 text-center text-[#8B887E] whitespace-nowrap">{d.startDate ? fmtDate(d.startDate) : '—'}</td>
-                  <td className="px-3 py-2 text-center text-[#8B887E] whitespace-nowrap">{d.endDate ? fmtDate(d.endDate) : '—'}</td>
-                  <td className="px-3 py-2 text-center">
-                    <span className={`inline-block px-2 py-0.5 rounded-lg text-[10px] font-semibold border ${
-                      d.isCompleted
-                        ? 'bg-[#DDE6D9] text-[#4F7E5C] border-[#4F7E5C]/30'
-                        : d.taskCount > 0
-                          ? 'bg-[#F0E4C9] text-[#B8893A] border-[#B8893A]/30'
-                          : 'bg-[#F1EEE6] text-[#8B887E] border-[#E9E5DA]'
-                    }`}>
-                      {d.isCompleted ? '已完成' : d.taskCount > 0 ? '進行中' : '待開始'}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-center text-[#5A574E] font-semibold whitespace-nowrap">
-                    {d.taskCount > 0 ? `${d.doneCount} / ${d.taskCount}` : '—'}
-                  </td>
-                  <td className="px-3 py-2 text-center whitespace-nowrap">
-                    {d.taskCount > 0 ? (
-                      <div className="flex items-center gap-1.5 justify-center">
-                        <div className="w-14 bg-[#F1EEE6] rounded-full h-1 overflow-hidden">
-                          <div className="h-full rounded-full bg-[#C96442]" style={{ width: `${d.completionRate}%` }} />
+              {data.map((d, i) => {
+                const isExpanded = expandedRow === i;
+                const sprint = sprints?.[i];
+                const allItems = sprint?.backlog?.tasks || [];
+                const pbis = allItems.filter((t: Task) => t.status === 'pbi');
+                const pbiIdSet = new Set(pbis.map((t: Task) => t.id));
+                const sprintTasks = allItems.filter((t: Task) => t.type === 'task' && t.pbiId && pbiIdSet.has(t.pbiId));
+                const hasDetail = sprintTasks.length > 0;
+                const rowBg = i % 2 === 0 ? 'bg-[#FAF9F5]' : 'bg-white';
+                return (
+                  <React.Fragment key={d.label}>
+                    <tr
+                      className={`${rowBg} ${hasDetail ? 'cursor-pointer hover:bg-[#F6F3EB]' : ''} transition-colors`}
+                      onClick={() => hasDetail && setExpandedRow(isExpanded ? null : i)}
+                    >
+                      <td className="px-3 py-2 font-semibold text-[#C96442] whitespace-nowrap">
+                        <div className="flex items-center gap-1">
+                          {d.label}
+                          {hasDetail && (
+                            <span className="text-[#B5B2A6]">
+                              {isExpanded ? <ChevronUp size={12} strokeWidth={2} /> : <ChevronDown size={12} strokeWidth={2} />}
+                            </span>
+                          )}
                         </div>
-                        <span className="font-semibold text-[#C96442] w-7 text-right">{d.completionRate}%</span>
-                      </div>
-                    ) : <span className="text-[#B5B2A6]">—</span>}
-                  </td>
-                </tr>
-              ))}
+                      </td>
+                      <td className="px-3 py-2 text-[#1F1D17]">{d.fullName}</td>
+                      <td className="px-3 py-2 text-center text-[#8B887E] whitespace-nowrap">{d.startDate ? fmtDate(d.startDate) : '—'}</td>
+                      <td className="px-3 py-2 text-center text-[#8B887E] whitespace-nowrap">{d.endDate ? fmtDate(d.endDate) : '—'}</td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={`inline-block px-2 py-0.5 rounded-lg text-[10px] font-semibold border ${
+                          d.isCompleted
+                            ? 'bg-[#DDE6D9] text-[#4F7E5C] border-[#4F7E5C]/30'
+                            : d.taskCount > 0
+                              ? 'bg-[#F0E4C9] text-[#B8893A] border-[#B8893A]/30'
+                              : 'bg-[#F1EEE6] text-[#8B887E] border-[#E9E5DA]'
+                        }`}>
+                          {d.isCompleted ? '已完成' : d.taskCount > 0 ? '進行中' : '待開始'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-center text-[#5A574E] font-semibold whitespace-nowrap">
+                        {d.taskCount > 0 ? `${d.doneCount} / ${d.taskCount}` : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-center whitespace-nowrap">
+                        {d.taskCount > 0 ? (
+                          <div className="flex items-center gap-1.5 justify-center">
+                            <div className="w-14 bg-[#F1EEE6] rounded-full h-1 overflow-hidden">
+                              <div className="h-full rounded-full bg-[#C96442]" style={{ width: `${d.completionRate}%` }} />
+                            </div>
+                            <span className="font-semibold text-[#C96442] w-7 text-right">{d.completionRate}%</span>
+                          </div>
+                        ) : <span className="text-[#B5B2A6]">—</span>}
+                      </td>
+                    </tr>
+                    {isExpanded && hasDetail && (
+                      <tr className={rowBg}>
+                        <td colSpan={7} className="px-6 py-3 border-t border-[#E9E5DA]">
+                          <div className="space-y-2">
+                            {pbis.filter(pbi => sprintTasks.some(t => t.pbiId === pbi.id)).map(pbi => {
+                              const pbiTasks = sprintTasks.filter(t => t.pbiId === pbi.id);
+                              const pbiDone = pbiTasks.filter(t => t.status === 'done').length;
+                              return (
+                                <div key={pbi.id} className="border border-[#E9E5DA] rounded-lg overflow-hidden">
+                                  <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-3 py-1.5 flex items-center gap-2">
+                                    <span className="text-[11px] font-semibold text-[#1F1D17] flex-1 min-w-0">{pbi.title || '未命名 PBI'}</span>
+                                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg whitespace-nowrap flex-shrink-0 ${pbiDone === pbiTasks.length ? 'bg-[#DDE6D9] text-[#4F7E5C]' : 'bg-[#F1EEE6] text-[#8B887E]'}`}>
+                                      {pbiDone}/{pbiTasks.length} 完成
+                                    </span>
+                                  </div>
+                                  <div className="divide-y divide-[#F1EEE6] bg-white">
+                                    {pbiTasks.map(task => (
+                                      <div key={task.id} className="px-3 py-1.5 flex items-center gap-2 flex-wrap">
+                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${task.status === 'done' ? 'bg-[#4F7E5C]' : task.status === 'doing' ? 'bg-[#C96442]' : 'bg-[#B5B2A6]'}`} />
+                                        <span className={`text-xs flex-1 min-w-[100px] ${task.status === 'done' ? 'text-[#8B887E] line-through' : 'text-[#1F1D17]'}`}>
+                                          {task.title || '未命名任務'}
+                                        </span>
+                                        {task.role && (
+                                          <span className="text-[10px] bg-[#F1EEE6] text-[#5A574E] border border-[#E9E5DA] px-2 py-0.5 rounded-lg whitespace-nowrap">
+                                            {task.role}
+                                          </span>
+                                        )}
+                                        {task.time && (
+                                          <span className="text-[10px] bg-[#F5E4DA] text-[#7A3520] border border-[#F5E4DA] px-2 py-0.5 rounded-lg flex items-center gap-1 whitespace-nowrap">
+                                            <Clock size={9} strokeWidth={2} /> {task.time}
+                                          </span>
+                                        )}
+                                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg whitespace-nowrap ${task.status === 'done' ? 'bg-[#DDE6D9] text-[#4F7E5C]' : task.status === 'doing' ? 'bg-[#F0E4C9] text-[#B8893A]' : 'bg-[#F1EEE6] text-[#8B887E]'}`}>
+                                          {task.status === 'done' ? '已完成' : task.status === 'doing' ? '進行中' : '待開始'}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {(() => {
+                              const orphans = sprintTasks.filter(t => !pbis.some(p => p.id === t.pbiId));
+                              if (!orphans.length) return null;
+                              return (
+                                <div className="border border-[#E9E5DA] rounded-lg overflow-hidden">
+                                  <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-3 py-1.5">
+                                    <span className="text-[11px] font-semibold text-[#8B887E]">其他任務</span>
+                                  </div>
+                                  <div className="divide-y divide-[#F1EEE6] bg-white">
+                                    {orphans.map(task => (
+                                      <div key={task.id} className="px-3 py-1.5 flex items-center gap-2 flex-wrap">
+                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${task.status === 'done' ? 'bg-[#4F7E5C]' : task.status === 'doing' ? 'bg-[#C96442]' : 'bg-[#B5B2A6]'}`} />
+                                        <span className={`text-xs flex-1 min-w-[100px] ${task.status === 'done' ? 'text-[#8B887E] line-through' : 'text-[#1F1D17]'}`}>{task.title || '未命名任務'}</span>
+                                        {task.role && <span className="text-[10px] bg-[#F1EEE6] text-[#5A574E] border border-[#E9E5DA] px-2 py-0.5 rounded-lg whitespace-nowrap">{task.role}</span>}
+                                        {task.time && <span className="text-[10px] bg-[#F5E4DA] text-[#7A3520] border border-[#F5E4DA] px-2 py-0.5 rounded-lg flex items-center gap-1 whitespace-nowrap"><Clock size={9} strokeWidth={2} /> {task.time}</span>}
+                                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg whitespace-nowrap ${task.status === 'done' ? 'bg-[#DDE6D9] text-[#4F7E5C]' : task.status === 'doing' ? 'bg-[#F0E4C9] text-[#B8893A]' : 'bg-[#F1EEE6] text-[#8B887E]'}`}>
+                                          {task.status === 'done' ? '已完成' : task.status === 'doing' ? '進行中' : '待開始'}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -878,7 +972,7 @@ export default function ReportPage() {
         </section>
 
         {/* 趨勢圖 */}
-        <TrendCharts data={chartData} completedCount={metrics.completed} totalCount={metrics.total} />
+        <TrendCharts data={chartData} completedCount={metrics.completed} totalCount={metrics.total} sprints={filteredSprints} />
 
         {/* Sprint 執行進度趨勢 */}
         <SprintProgressChart sprints={filteredSprints} />
