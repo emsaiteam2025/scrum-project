@@ -471,6 +471,60 @@ function TrendCharts({ data, completedCount, totalCount, sprints }: { data: Char
                       <tr className={rowBg}>
                         <td colSpan={7} className="px-6 py-3 border-t border-[#E9E5DA]">
                           <div className="space-y-2">
+                            {/* 時間分配圖 */}
+                            {(() => {
+                              const tasksWithTime = sprintTasks.filter(t => parseHours(t.time || '') !== null);
+                              if (tasksWithTime.length < 2) return null;
+                              const maxH = Math.max(...tasksWithTime.map(t => parseHours(t.time || '') || 0));
+                              const totalH = tasksWithTime.reduce((s, t) => s + (parseHours(t.time || '') || 0), 0);
+                              const LW = 188, BW = 240, RW = 54, RH = 22;
+                              const W = LW + BW + RW;
+                              const H = tasksWithTime.length * RH + 20;
+                              const fmt = (n: number) => n % 1 === 0 ? `${n}H` : `${n.toFixed(1)}H`;
+                              return (
+                                <div className="border border-[#E9E5DA] rounded-lg overflow-hidden">
+                                  <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-3 py-1.5 flex items-center gap-2">
+                                    <Clock size={11} strokeWidth={2} className="text-[#C96442]" />
+                                    <span className="text-[11px] font-semibold text-[#1F1D17]">時間分配圖</span>
+                                    <span className="text-[10px] text-[#8B887E] ml-auto">合計 {fmt(totalH)}</span>
+                                  </div>
+                                  <div className="bg-white px-3 py-2 overflow-x-auto">
+                                    <svg viewBox={`0 0 ${W} ${H}`} style={{ minWidth: 320, height: H, display: 'block' }}>
+                                      {/* 輔助格線 */}
+                                      {[0.25, 0.5, 0.75, 1].map(r => (
+                                        <line key={r} x1={LW + BW * r} y1={0} x2={LW + BW * r} y2={H - 20}
+                                          stroke="#F1EEE6" strokeWidth="1" />
+                                      ))}
+                                      {tasksWithTime.map((task, ri) => {
+                                        const hours = parseHours(task.time || '') || 0;
+                                        const barLen = maxH > 0 ? (hours / maxH) * BW : 0;
+                                        const y = ri * RH;
+                                        const color = task.status === 'done' ? '#4F7E5C' : task.status === 'doing' ? '#C96442' : '#B5B2A6';
+                                        const label = task.title || '未命名';
+                                        const pct = totalH > 0 ? Math.round(hours / totalH * 100) : 0;
+                                        return (
+                                          <g key={task.id}>
+                                            <text x={LW - 8} y={y + RH / 2 + 4} textAnchor="end" fontSize="10"
+                                              fill={task.status === 'done' ? '#8B887E' : '#1F1D17'}>
+                                              {label.length > 21 ? label.slice(0, 21) + '…' : label}
+                                            </text>
+                                            <rect x={LW} y={y + 4} width={Math.max(barLen, 3)} height={RH - 8}
+                                              rx="3" fill={color} fillOpacity={task.status === 'done' ? 0.55 : 0.82} />
+                                            <text x={LW + Math.max(barLen, 3) + 5} y={y + RH / 2 + 4}
+                                              fontSize="10" fill={color} fontWeight="600">
+                                              {fmt(hours)} <tspan fill="#B5B2A6" fontWeight="400">({pct}%)</tspan>
+                                            </text>
+                                          </g>
+                                        );
+                                      })}
+                                      <line x1={LW} y1={H - 14} x2={LW + BW} y2={H - 14} stroke="#D8D3C5" strokeWidth="1" />
+                                      <text x={LW} y={H - 4} fontSize="9" fill="#B5B2A6">0</text>
+                                      <text x={LW + BW} y={H - 4} textAnchor="end" fontSize="9" fill="#B5B2A6">{fmt(maxH)}</text>
+                                    </svg>
+                                  </div>
+                                </div>
+                              );
+                            })()}
                             {pbis.filter(pbi => sprintTasks.some(t => t.pbiId === pbi.id)).map(pbi => {
                               const pbiTasks = sprintTasks.filter(t => t.pbiId === pbi.id);
                               const pbiDone = pbiTasks.filter(t => t.status === 'done').length;
@@ -550,6 +604,20 @@ function TrendCharts({ data, completedCount, totalCount, sprints }: { data: Char
 
 // ── Sprint 執行進度趨勢圖 ─────────────────────────────────
 const PROGRESS_COLORS = ['#C96442', '#4F7E5C', '#B8893A', '#467386', '#8B5A2B', '#5A574E', '#B8543C', '#8B887E'];
+
+function parseHours(s: string): number | null {
+  if (!s) return null;
+  const t = s.trim();
+  let m = t.match(/^(\d+(?:\.\d+)?)\s*[hH]/);
+  if (m) return parseFloat(m[1]);
+  m = t.match(/^(\d+(?:\.\d+)?)\s*小時/);
+  if (m) return parseFloat(m[1]);
+  m = t.match(/^(\d+(?:\.\d+)?)\s*(?:min|[mM]|分)/);
+  if (m) return parseFloat(m[1]) / 60;
+  m = t.match(/^(\d+(?:\.\d+)?)$/);
+  if (m) return parseFloat(m[1]);
+  return null;
+}
 
 function parseDurationToDays(duration: string | undefined): number | null {
   if (!duration) return null;
