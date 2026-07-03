@@ -477,9 +477,6 @@ function TrendCharts({ data, completedCount, totalCount, sprints }: { data: Char
                               if (tasksWithTime.length < 2) return null;
                               const maxH = Math.max(...tasksWithTime.map(t => parseHours(t.time || '') || 0));
                               const totalH = tasksWithTime.reduce((s, t) => s + (parseHours(t.time || '') || 0), 0);
-                              const LW = 188, BW = 210, VW = 80, RH = 22;
-                              const W = LW + BW + VW;
-                              const H = tasksWithTime.length * RH + 20;
                               const fmt = (n: number) => n % 1 === 0 ? `${n}H` : `${n.toFixed(1)}H`;
                               return (
                                 <div className="border border-[#E9E5DA] rounded-lg overflow-hidden">
@@ -488,40 +485,38 @@ function TrendCharts({ data, completedCount, totalCount, sprints }: { data: Char
                                     <span className="text-[11px] font-semibold text-[#1F1D17]">時間分配圖</span>
                                     <span className="text-[10px] text-[#8B887E] ml-auto">合計 {fmt(totalH)}</span>
                                   </div>
-                                  <div className="bg-white px-3 py-2 overflow-x-auto">
-                                    <svg viewBox={`0 0 ${W} ${H}`} style={{ minWidth: 320, height: H, display: 'block' }}>
-                                      {/* 輔助格線 */}
-                                      {[0.25, 0.5, 0.75, 1].map(r => (
-                                        <line key={r} x1={LW + BW * r} y1={0} x2={LW + BW * r} y2={H - 20}
-                                          stroke="#F1EEE6" strokeWidth="1" />
-                                      ))}
-                                      {tasksWithTime.map((task, ri) => {
-                                        const hours = parseHours(task.time || '') || 0;
-                                        const barLen = maxH > 0 ? (hours / maxH) * BW : 0;
-                                        const y = ri * RH;
-                                        const color = task.status === 'done' ? '#4F7E5C' : task.status === 'doing' ? '#C96442' : '#B5B2A6';
-                                        const label = task.title || '未命名';
-                                        const pct = totalH > 0 ? Math.round(hours / totalH * 100) : 0;
-                                        return (
-                                          <g key={task.id}>
-                                            <text x={LW - 8} y={y + RH / 2 + 4} textAnchor="end" fontSize="10"
-                                              fill={task.status === 'done' ? '#8B887E' : '#1F1D17'}>
-                                              {label.length > 21 ? label.slice(0, 21) + '…' : label}
-                                            </text>
-                                            <rect x={LW} y={y + 4} width={Math.max(barLen, 3)} height={RH - 8}
-                                              rx="3" fill={color} fillOpacity={task.status === 'done' ? 0.55 : 0.82} />
-                                            {/* 固定右對齊文字，不受 bar 長度影響 */}
-                                            <text x={LW + BW + VW} y={y + RH / 2 + 4}
-                                              textAnchor="end" fontSize="10" fill={color} fontWeight="600">
-                                              {fmt(hours)} ({pct}%)
-                                            </text>
-                                          </g>
-                                        );
-                                      })}
-                                      <line x1={LW} y1={H - 14} x2={LW + BW} y2={H - 14} stroke="#D8D3C5" strokeWidth="1" />
-                                      <text x={LW} y={H - 4} fontSize="9" fill="#B5B2A6">0</text>
-                                      <text x={LW + BW} y={H - 4} textAnchor="end" fontSize="9" fill="#B5B2A6">{fmt(maxH)}</text>
-                                    </svg>
+                                  <div className="bg-white px-4 py-3 space-y-1.5">
+                                    {tasksWithTime.map(task => {
+                                      const hours = parseHours(task.time || '') || 0;
+                                      const widthPct = maxH > 0 ? (hours / maxH) * 100 : 0;
+                                      const color = task.status === 'done' ? '#4F7E5C' : task.status === 'doing' ? '#C96442' : '#B5B2A6';
+                                      const pct = totalH > 0 ? Math.round(hours / totalH * 100) : 0;
+                                      return (
+                                        <div key={task.id} className="flex items-center gap-3 min-w-0">
+                                          <div className="w-44 text-right text-[10px] flex-shrink-0 truncate"
+                                            title={task.title || ''}
+                                            style={{ color: task.status === 'done' ? '#8B887E' : '#1F1D17' }}>
+                                            {task.title || '未命名'}
+                                          </div>
+                                          <div className="flex-1 bg-[#F1EEE6] rounded-full h-3.5 overflow-hidden min-w-0">
+                                            <div className="h-full rounded-full"
+                                              style={{ width: `${widthPct}%`, backgroundColor: color, opacity: task.status === 'done' ? 0.6 : 0.85 }} />
+                                          </div>
+                                          <div className="w-[84px] flex-shrink-0 text-right text-[10px] font-semibold whitespace-nowrap"
+                                            style={{ color }}>
+                                            {fmt(hours)} <span className="text-[#B5B2A6] font-normal">({pct}%)</span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                    <div className="flex items-center gap-3 pt-0.5">
+                                      <div className="w-44 flex-shrink-0" />
+                                      <div className="flex-1 flex justify-between text-[9px] text-[#B5B2A6] border-t border-[#E9E5DA] pt-1">
+                                        <span>0</span>
+                                        <span>{fmt(maxH)}</span>
+                                      </div>
+                                      <div className="w-[84px] flex-shrink-0" />
+                                    </div>
                                   </div>
                                 </div>
                               );
