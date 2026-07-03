@@ -477,8 +477,8 @@ function TrendCharts({ data, completedCount, totalCount, sprints }: { data: Char
                               if (tasksWithTime.length < 2) return null;
                               const maxH = Math.max(...tasksWithTime.map(t => parseHours(t.time || '') || 0));
                               const totalH = tasksWithTime.reduce((s, t) => s + (parseHours(t.time || '') || 0), 0);
-                              const LW = 188, BW = 240, RW = 54, RH = 22;
-                              const W = LW + BW + RW;
+                              const LW = 188, BW = 210, VW = 80, RH = 22;
+                              const W = LW + BW + VW;
                               const H = tasksWithTime.length * RH + 20;
                               const fmt = (n: number) => n % 1 === 0 ? `${n}H` : `${n.toFixed(1)}H`;
                               return (
@@ -510,9 +510,10 @@ function TrendCharts({ data, completedCount, totalCount, sprints }: { data: Char
                                             </text>
                                             <rect x={LW} y={y + 4} width={Math.max(barLen, 3)} height={RH - 8}
                                               rx="3" fill={color} fillOpacity={task.status === 'done' ? 0.55 : 0.82} />
-                                            <text x={LW + Math.max(barLen, 3) + 5} y={y + RH / 2 + 4}
-                                              fontSize="10" fill={color} fontWeight="600">
-                                              {fmt(hours)} <tspan fill="#B5B2A6" fontWeight="400">({pct}%)</tspan>
+                                            {/* 固定右對齊文字，不受 bar 長度影響 */}
+                                            <text x={LW + BW + VW} y={y + RH / 2 + 4}
+                                              textAnchor="end" fontSize="10" fill={color} fontWeight="600">
+                                              {fmt(hours)} ({pct}%)
                                             </text>
                                           </g>
                                         );

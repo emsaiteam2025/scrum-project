@@ -131,7 +131,7 @@ export default function Navigation() {
             <Brain size={15} strokeWidth={1.75} />
             知識學習
           </Link>
-          <span className="text-[10px] font-mono text-[#B5B2A6] ml-1">v1.0.232</span>
+          <span className="text-[10px] font-mono text-[#B5B2A6] ml-1">v1.0.233</span>
         </div>
 
         {currentSprintName && (
