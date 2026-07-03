@@ -11,6 +11,9 @@ import { Mic, Square, Sparkles, Globe, TrendingUp, Target, ArrowRight, Save } fr
 
 type SummaryLevel = '詳細' | '適中' | '精簡';
 
+// 每 5 分鐘自動分段上傳，確保不超過 API 大小限制（Whisper 25MB / Gemini 20MB）
+const AUTO_FLUSH_MS = 5 * 60 * 1000;
+
 function VoiceTextSection({
   value,
   onChange,
@@ -29,15 +32,21 @@ function VoiceTextSection({
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isAutoTranscribing, setIsAutoTranscribing] = useState(false);
+  const [segmentCount, setSegmentCount] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeLevel, setActiveLevel] = useState<SummaryLevel | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
+  // 始終指向最新的 value，避免閉包過舊問題
+  const valueRef = useRef(value);
+  useEffect(() => { valueRef.current = value; }, [value]);
 
   const formatTime = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
@@ -88,44 +97,15 @@ function VoiceTextSection({
     if (canvas) { const ctx = canvas.getContext('2d'); if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height); }
   };
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mr = new MediaRecorder(stream);
-      mediaRecorderRef.current = mr;
-      audioChunksRef.current = [];
-      mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
-      mr.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop());
-        stopWaveform();
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        await transcribeAndAppend(blob);
-      };
-      mr.start();
-      startWaveform(stream);
-      setIsRecording(true);
-      setRecordingTime(0);
-      timerRef.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
-    } catch {
-      alert('無法存取麥克風，請確認瀏覽器已授予麥克風權限。');
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    }
-  };
-
-  const transcribeAndAppend = async (blob: Blob) => {
+  // silent=true 時在背景靜默執行（自動分段），不顯示 isTranscribing spinner
+  const transcribeAndAppend = async (blob: Blob, silent = false) => {
+    if (blob.size < 5000) return; // 小於 5KB 視為無聲，跳過
     const apiKey = localStorage.getItem('openai_api_key');
     if (!apiKey) {
-      alert('⚠️ 請先在 Sprint Planning 頁面設定 AI 魔法鑰匙 (API Key)');
+      if (!silent) alert('⚠️ 請先在 Sprint Planning 頁面設定 AI 魔法鑰匙 (API Key)');
       return;
     }
-    setIsTranscribing(true);
+    if (!silent) setIsTranscribing(true);
     try {
       const fd = new FormData();
       fd.append('audio', blob, 'audio.webm');
@@ -134,11 +114,68 @@ function VoiceTextSection({
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || '轉錄失敗'); }
       const data = await res.json();
       const text = (data.text || '').trim();
-      if (text) onChange(value ? value + '\n' + text : text);
+      // 使用 valueRef 確保多段同時完成時不會互相覆蓋
+      if (text) {
+        const current = valueRef.current;
+        onChange(current ? current + '\n' + text : text);
+      }
     } catch (err: unknown) {
-      alert('轉錄失敗：' + ((err as Error).message || '未知錯誤'));
+      if (!silent) alert('轉錄失敗：' + ((err as Error).message || '未知錯誤'));
+      else console.error('[auto-flush transcribe]', err);
     } finally {
-      setIsTranscribing(false);
+      if (!silent) setIsTranscribing(false);
+    }
+  };
+
+  // 自動分段：將目前緩衝的 chunks 打包送出，清空後繼續錄
+  const flushAudio = async () => {
+    if (audioChunksRef.current.length === 0) return;
+    const chunks = audioChunksRef.current.splice(0); // 原子取出並清空
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    setIsAutoTranscribing(true);
+    try {
+      await transcribeAndAppend(blob, true);
+      setSegmentCount(c => c + 1);
+    } finally {
+      setIsAutoTranscribing(false);
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      mediaRecorderRef.current = mr;
+      audioChunksRef.current = [];
+      // timeslice=1000：每秒觸發一次 ondataavailable，讓 flush 可以精確在 5 分鐘切割
+      mr.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        stopWaveform();
+        // 停止後把最後一段剩餘音訊送出
+        const remaining = audioChunksRef.current.splice(0);
+        const blob = new Blob(remaining, { type: 'audio/webm' });
+        await transcribeAndAppend(blob, false);
+      };
+      mr.start(1000);
+      // 每 5 分鐘自動 flush
+      flushTimerRef.current = setInterval(flushAudio, AUTO_FLUSH_MS);
+      startWaveform(stream);
+      setIsRecording(true);
+      setRecordingTime(0);
+      setSegmentCount(0);
+      timerRef.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
+    } catch {
+      alert('無法存取麥克風，請確認瀏覽器已授予麥克風權限。');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      if (flushTimerRef.current) { clearInterval(flushTimerRef.current); flushTimerRef.current = null; }
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
   };
 
@@ -196,6 +233,19 @@ function VoiceTextSection({
         <div className="px-3 py-2 bg-[#DDE6D9] border border-[#4F7E5C] rounded-lg text-sm text-[#4F7E5C] font-medium flex items-center gap-2">
           <span className="inline-block w-3 h-3 border border-[#4F7E5C] border-t-transparent rounded-full animate-spin" />
           AI 轉錄中，請稍候...
+        </div>
+      )}
+      {/* 自動分段背景轉錄提示 */}
+      {isAutoTranscribing && (
+        <div className="px-3 py-2 bg-[#F6F3EB] border border-[#E9E5DA] rounded-lg text-xs text-[#8B887E] flex items-center gap-2">
+          <span className="inline-block w-2.5 h-2.5 border border-[#8B887E] border-t-transparent rounded-full animate-spin" />
+          背景轉錄第 {segmentCount + 1} 段中（錄音繼續進行）...
+        </div>
+      )}
+      {isRecording && segmentCount > 0 && !isAutoTranscribing && (
+        <div className="px-3 py-1.5 bg-[#F6F3EB] border border-[#E9E5DA] rounded-lg text-[11px] text-[#8B887E] flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#4F7E5C]" />
+          已完成 {segmentCount} 段自動轉錄，繼續錄音中...
         </div>
       )}
 
