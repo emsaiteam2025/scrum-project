@@ -8,7 +8,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import {
   Home, Printer, Calendar, X, BarChart2, TrendingUp,
   ChevronDown, ChevronUp, Target, Users, CheckCircle2,
-  FileText, Sprout, AlertTriangle, Zap, User, ClipboardList,
+  FileText, Sprout, AlertTriangle, Zap, User, ClipboardList, Clock,
 } from 'lucide-react';
 
 interface Task {
@@ -18,6 +18,9 @@ interface Task {
   type?: string;
   pbiId?: string;
   acceptedBy?: string;
+  role?: string;
+  time?: string;
+  desc?: string;
 }
 
 interface SprintDoc {
@@ -1059,6 +1062,99 @@ export default function ReportPage() {
                                       {pbi.title}
                                     </span>
                                   ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* 任務明細 */}
+                            {tasks.length > 0 && (
+                              <div>
+                                <div className="text-[10px] uppercase tracking-widest text-[#8B887E] mb-2 flex items-center gap-1.5 font-semibold">
+                                  <ClipboardList size={11} strokeWidth={2} /> 任務明細（{done}/{tasks.length} 完成）
+                                </div>
+                                <div className="space-y-2">
+                                  {spPbis.filter(pbi => tasks.some(t => t.pbiId === pbi.id)).map(pbi => {
+                                    const pbiTasks = tasks.filter(t => t.pbiId === pbi.id);
+                                    const pbiDone = pbiTasks.filter(t => t.status === 'done').length;
+                                    return (
+                                      <div key={pbi.id} className="border border-[#E9E5DA] rounded-lg overflow-hidden bg-white">
+                                        <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-3 py-2 flex items-center gap-2">
+                                          <span className="text-xs font-semibold text-[#1F1D17] flex-1 min-w-0 truncate">{pbi.title || '未命名 PBI'}</span>
+                                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg whitespace-nowrap flex-shrink-0 ${pbiDone === pbiTasks.length ? 'bg-[#DDE6D9] text-[#4F7E5C]' : 'bg-[#F1EEE6] text-[#8B887E]'}`}>
+                                            {pbiDone}/{pbiTasks.length} 完成
+                                          </span>
+                                        </div>
+                                        <div className="divide-y divide-[#F1EEE6]">
+                                          {pbiTasks.map(task => (
+                                            <div key={task.id} className="px-3 py-2 flex items-center gap-2 flex-wrap">
+                                              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                                task.status === 'done' ? 'bg-[#4F7E5C]' : task.status === 'doing' ? 'bg-[#C96442]' : 'bg-[#B5B2A6]'
+                                              }`} />
+                                              <span className={`text-xs flex-1 min-w-[100px] ${task.status === 'done' ? 'text-[#8B887E] line-through' : 'text-[#1F1D17]'}`}>
+                                                {task.title || '未命名任務'}
+                                              </span>
+                                              {task.role && (
+                                                <span className="text-[10px] bg-[#F1EEE6] text-[#5A574E] border border-[#E9E5DA] px-2 py-0.5 rounded-lg whitespace-nowrap">
+                                                  {task.role}
+                                                </span>
+                                              )}
+                                              {task.time && (
+                                                <span className="text-[10px] bg-[#F5E4DA] text-[#7A3520] border border-[#F5E4DA] px-2 py-0.5 rounded-lg flex items-center gap-1 whitespace-nowrap">
+                                                  <Clock size={9} strokeWidth={2} /> {task.time}
+                                                </span>
+                                              )}
+                                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg whitespace-nowrap ${
+                                                task.status === 'done' ? 'bg-[#DDE6D9] text-[#4F7E5C]' :
+                                                task.status === 'doing' ? 'bg-[#F0E4C9] text-[#B8893A]' : 'bg-[#F1EEE6] text-[#8B887E]'
+                                              }`}>
+                                                {task.status === 'done' ? '已完成' : task.status === 'doing' ? '進行中' : '待開始'}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                  {/* 無 PBI 的任務 */}
+                                  {(() => {
+                                    const orphans = tasks.filter(t => !spPbis.some(p => p.id === t.pbiId));
+                                    if (!orphans.length) return null;
+                                    return (
+                                      <div className="border border-[#E9E5DA] rounded-lg overflow-hidden bg-white">
+                                        <div className="bg-[#F6F3EB] border-b border-[#E9E5DA] px-3 py-2">
+                                          <span className="text-xs font-semibold text-[#8B887E]">其他任務</span>
+                                        </div>
+                                        <div className="divide-y divide-[#F1EEE6]">
+                                          {orphans.map(task => (
+                                            <div key={task.id} className="px-3 py-2 flex items-center gap-2 flex-wrap">
+                                              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                                task.status === 'done' ? 'bg-[#4F7E5C]' : task.status === 'doing' ? 'bg-[#C96442]' : 'bg-[#B5B2A6]'
+                                              }`} />
+                                              <span className={`text-xs flex-1 min-w-[100px] ${task.status === 'done' ? 'text-[#8B887E] line-through' : 'text-[#1F1D17]'}`}>
+                                                {task.title || '未命名任務'}
+                                              </span>
+                                              {task.role && (
+                                                <span className="text-[10px] bg-[#F1EEE6] text-[#5A574E] border border-[#E9E5DA] px-2 py-0.5 rounded-lg whitespace-nowrap">
+                                                  {task.role}
+                                                </span>
+                                              )}
+                                              {task.time && (
+                                                <span className="text-[10px] bg-[#F5E4DA] text-[#7A3520] border border-[#F5E4DA] px-2 py-0.5 rounded-lg flex items-center gap-1 whitespace-nowrap">
+                                                  <Clock size={9} strokeWidth={2} /> {task.time}
+                                                </span>
+                                              )}
+                                              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg whitespace-nowrap ${
+                                                task.status === 'done' ? 'bg-[#DDE6D9] text-[#4F7E5C]' :
+                                                task.status === 'doing' ? 'bg-[#F0E4C9] text-[#B8893A]' : 'bg-[#F1EEE6] text-[#8B887E]'
+                                              }`}>
+                                                {task.status === 'done' ? '已完成' : task.status === 'doing' ? '進行中' : '待開始'}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             )}
