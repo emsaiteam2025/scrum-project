@@ -325,6 +325,7 @@ export default function SprintList() {
       await sd(fd(db, 'lineSchedule', user.uid), {
         ...schedule,
         recipients,
+        sprintIds: Array.from(selectedSprintIds),
         lastDailyText: journalDailyText || '',
         lastWeeklyText: journalWeeklyText || '',
         updatedAt: Date.now(),
@@ -405,12 +406,13 @@ export default function SprintList() {
     if (!user || (!journalDailyText && !journalWeeklyText)) return;
     import('firebase/firestore').then(({ doc: fd, setDoc: sd }) => {
       sd(fd(db, 'lineSchedule', user.uid), {
+        sprintIds: Array.from(selectedSprintIds),
         lastDailyText: journalDailyText,
         lastWeeklyText: journalWeeklyText,
         updatedAt: Date.now(),
       }, { merge: true }).catch(() => {});
     });
-  }, [journalDailyText, journalWeeklyText, user]);
+  }, [journalDailyText, journalWeeklyText, selectedSprintIds, user]);
 
   useEffect(() => {
     // 如果載入超過 5 秒，顯示逾時提示

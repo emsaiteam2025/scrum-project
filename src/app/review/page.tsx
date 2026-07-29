@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
