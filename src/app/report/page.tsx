@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
-import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { fetchAccessibleSprints } from '@/lib/sprints';
+import ActionItemsDigest from '@/components/ActionItemsDigest';
 import {
   Home, Printer, Calendar, X, BarChart2, TrendingUp,
   ChevronDown, ChevronUp, Target, Users, CheckCircle2,
@@ -812,11 +812,8 @@ export default function ReportPage() {
     if (authLoading) return;
     if (!user) { setLoading(false); return; }
     const fetch = async () => {
-      const ref = collection(db, 'sprints');
-      const q = query(ref, where('ownerId', '==', user.uid));
-      const snap = await getDocs(q);
-      const data = snap.docs.map(d => ({ ...d.data(), id: d.id } as SprintDoc));
-      data.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      // 含「自己擁有的」與「自己是協作者的」Sprint（已依 createdAt 由舊到新排序）
+      const data = await fetchAccessibleSprints<SprintDoc>({ uid: user.uid, email: user.email });
       setSprints(data);
       const ids = new Set(data.filter(s =>
         s.planning?.goal || (s.backlog?.tasks || []).length > 0 || s.review?.demo || s.retrospective?.actionItems
@@ -1040,6 +1037,9 @@ export default function ReportPage() {
 
         {/* Sprint 執行進度趨勢 */}
         <SprintProgressChart sprints={filteredSprints} />
+
+        {/* 歷次改善行動彙總（唯讀，跨 Sprint） */}
+        {filteredSprints.length > 0 && <ActionItemsDigest sprints={filteredSprints} />}
 
         {/* 無資料提示 */}
         {filteredSprints.length === 0 && (

@@ -6,6 +6,9 @@ import Navigation from '@/components/Navigation';
 import SaveIndicator from '@/components/SaveIndicator';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import CountdownTimer from '@/components/CountdownTimer';
+import ActionItemsDigest, { type DigestSprint } from '@/components/ActionItemsDigest';
+import { useAuth } from '@/components/AuthProvider';
+import { fetchAccessibleSprints } from '@/lib/sprints';
 import { BookOpen, Music, FileText, Sprout, AlertTriangle, Zap, Target, Play, Square, CheckCircle2, Save } from 'lucide-react';
 
 function parseYoutubeId(url: string): string | null {
@@ -59,6 +62,18 @@ export default function SprintRetrospective() {
     actionItems: '',
     actionTracker: ''
   });
+
+  // 歷次改善行動彙總：載入所有可存取的 Sprint（自己擁有的＋自己是協作者的）
+  const { user } = useAuth();
+  const [allSprints, setAllSprints] = useState<DigestSprint[]>([]);
+  const [currentSprintId, setCurrentSprintId] = useState<string | null>(null);
+  useEffect(() => {
+    setCurrentSprintId(localStorage.getItem('currentSprintId'));
+    if (!user) return;
+    fetchAccessibleSprints<DigestSprint>({ uid: user.uid, email: user.email })
+      .then(setAllSprints)
+      .catch(() => {});
+  }, [user]);
 
   return (
     <main className="min-h-screen bg-[#FAF9F5] p-4 md:p-8 font-sans text-[#1F1D17]">
@@ -263,6 +278,9 @@ export default function SprintRetrospective() {
             />
           </div>
         </section>
+
+        {/* 歷次改善行動彙總（唯讀，跨 Sprint） */}
+        <ActionItemsDigest sprints={allSprints} currentSprintId={currentSprintId} />
 
         <div className="flex justify-end pt-2">
           <button className="inline-flex items-center gap-2 bg-[#C96442] text-white px-8 py-3 rounded-[9px] font-semibold text-sm hover:bg-[#7A3520] hover:shadow-md hover:-translate-y-[1px] transition-all duration-150">
