@@ -4,10 +4,11 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import SaveIndicator from '@/components/SaveIndicator';
+import { jDays } from '@/lib/journal';
 import {
   Camera, Kanban, Target, BarChart2,
   ChevronUp, ChevronDown, Copy, Pencil, Trash2,
-  Bot, Plus, Save, CheckCircle2, Layers,
+  Bot, Plus, Save, CheckCircle2, Layers, Palette, X,
 } from 'lucide-react';
 
 interface Task {
@@ -21,13 +22,19 @@ interface Task {
   pbiId?: string;
   acceptedBy?: string;
   acceptedAt?: string;
+  color?: string;
 }
 
 const initialTasks: Task[] = [];
 
+// Sprint Planning 的「時間限制」是週數（'1'~'4'）或 '30d'，這裡轉成人看得懂的標籤
+const timeLimitLabel = (tl: unknown): string =>
+  tl === '30d' ? '30 天' : `${tl} 週`;
+
 export default function Backlog() {
-  const [errorMsg, setErrorMsg] = useState<string>('');
+  const [planningTimeLabel, setPlanningTimeLabel] = useState<string>('');
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [colorPickerTaskId, setColorPickerTaskId] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isPhotoRestoring, setIsPhotoRestoring] = useState(false);
@@ -73,6 +80,11 @@ export default function Backlog() {
     }
   }, [sprintDays]);
 
+  // 週期天數以 Sprint Planning 為單一來源，這裡用 ref 讓 5 秒輪詢的同步不會讀到過期的閉包值
+  // （否則每輪都會誤判成「不一致」而重複觸發儲存）
+  const sprintDaysRef = useRef<number | string>(sprintDays);
+  useEffect(() => { sprintDaysRef.current = sprintDays; }, [sprintDays]);
+
   useEffect(() => {
     if (loading) return;
     const syncWhatsFromPlanning = async () => {
@@ -97,6 +109,16 @@ export default function Backlog() {
           if (localStr) planningData = JSON.parse(localStr);
         }
         if (planningData) {
+          // 週期天數：由 Planning 的時間限制換算後帶入（1~4 週 → 7/14/21/28 天、30d → 30 天）
+          const tl = planningData.timeLimit || planningData.duration;
+          if (tl) {
+            setPlanningTimeLabel(timeLimitLabel(tl));
+            const days = jDays(tl);
+            if (days > 0 && Number(sprintDaysRef.current) !== days && (!isPublicViewer || auth.currentUser)) {
+              updateData({ sprintDays: days });
+              localStorage.setItem('sprintDays', String(days));
+            }
+          }
           if (planningData.devs) {
             const devsArray = planningData.devs.split(/[,、，\n]/).map((d: string) => d.trim()).filter((d: string) => d);
             if (!isPublicViewer || auth.currentUser) {
@@ -318,21 +340,6 @@ export default function Backlog() {
     }
   };
 
-  const handleDaysChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    if (value === '') { updateData({ sprintDays: '' }); setErrorMsg(''); return; }
-    const num = Number(value);
-    if (num > 30) {
-      updateData({ sprintDays: 30 });
-      setErrorMsg('⚠️ 週期天數絕對不能超過 30 天！已為您限制為 30 天。');
-      localStorage.setItem('sprintDays', '30');
-    } else if (num < 1) {
-      updateData({ sprintDays: 1 }); setErrorMsg(''); localStorage.setItem('sprintDays', '1');
-    } else {
-      updateData({ sprintDays: num }); setErrorMsg(''); localStorage.setItem('sprintDays', num.toString());
-    }
-  };
-
   const onDragStart = (e: React.DragEvent, task: Task) => {
     if (editingTaskId === task.id) { e.preventDefault(); return; }
     e.dataTransfer.setData('taskId', task.id);
@@ -456,6 +463,7 @@ export default function Backlog() {
           onDragStart={(e) => onDragStart(e, task)}
           onDragOver={onDragOver}
           onDrop={(e) => { e.stopPropagation(); onDrop(e, status, task.id, pbiId); }}
+          style={task.color ? { borderLeftColor: task.color, borderLeftWidth: '3px', borderLeftStyle: 'solid' } : undefined}
           className={`bg-white p-3 rounded-xl transition-all duration-150 group relative
             ${task.type === 'pbi'
               ? 'border border-[#E9E5DA] border-l-[3px] border-l-[#C96442]'
@@ -477,8 +485,19 @@ export default function Backlog() {
                 <button onClick={() => moveTask(task.id, -1)} className="text-[#8B887E] hover:text-[#1F1D17] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="向上排序"><ChevronUp size={13} strokeWidth={1.75} /></button>
                 <button onClick={() => moveTask(task.id, 1)} className="text-[#8B887E] hover:text-[#1F1D17] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="向下排序"><ChevronDown size={13} strokeWidth={1.75} /></button>
                 <button onClick={() => copyTask(task.id)} className="text-[#8B887E] hover:text-[#4F7E5C] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="複製"><Copy size={13} strokeWidth={1.75} /></button>
+                <button onClick={(e) => { e.stopPropagation(); setColorPickerTaskId(colorPickerTaskId === task.id ? null : task.id); }} className="text-[#8B887E] hover:text-[#C96442] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="顏色"><Palette size={13} strokeWidth={1.75} /></button>
                 <button onClick={() => setEditingTaskId(task.id)} className="text-[#8B887E] hover:text-[#1F1D17] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="編輯"><Pencil size={13} strokeWidth={1.75} /></button>
                 <button onClick={() => deleteTask(task.id)} className="text-[#8B887E] hover:text-[#B8543C] hover:bg-[#F0DDD3] p-1.5 rounded-md transition-all" title="刪除"><Trash2 size={13} strokeWidth={1.75} /></button>
+              </div>
+            )}
+            {colorPickerTaskId === task.id && (
+              <div className="absolute top-9 right-2 z-30 bg-white border border-[#E9E5DA] rounded-lg shadow-md p-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()} draggable onDragStart={(e) => e.preventDefault()}>
+                <label className="flex items-center gap-1.5 cursor-pointer text-xs text-[#5A574E]">
+                  <input type="color" value={task.color || '#C96442'} onChange={(e) => updateTask(task.id, 'color', e.target.value)} className="w-7 h-7 p-0 border border-[#E9E5DA] rounded cursor-pointer bg-white" title="選擇顏色" />
+                  選色
+                </label>
+                <button onClick={() => { updateTask(task.id, 'color', ''); setColorPickerTaskId(null); }} className="text-xs text-[#8B887E] hover:text-[#B8543C] px-2 py-1 rounded hover:bg-[#F0DDD3] transition-all whitespace-nowrap">清除</button>
+                <button onClick={() => setColorPickerTaskId(null)} className="text-[#8B887E] hover:text-[#1F1D17] p-1 rounded hover:bg-[#F1EEE6] transition-all" title="關閉"><X size={12} strokeWidth={1.75} /></button>
               </div>
             )}
           </div>
@@ -623,18 +642,16 @@ export default function Backlog() {
             </div>
             <div className="flex flex-col gap-2 relative md:w-44">
               <label className="text-sm font-medium text-[#5A574E]">週期（天）</label>
-              <input
-                type="number" min="1" max="30"
-                value={sprintDays}
-                onChange={handleDaysChange}
-                className="w-full px-3 py-3 bg-white border border-[#E9E5DA] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F5E4DA] text-sm text-[#1F1D17]"
-                placeholder="最多 30"
-              />
-              {errorMsg && (
-                <div className="absolute -bottom-6 left-0 text-xs text-[#B8543C] bg-[#F0DDD3] px-2 py-0.5 rounded whitespace-nowrap">
-                  {errorMsg}
-                </div>
-              )}
+              {/* 唯讀：以 Sprint Planning 的時間限制為單一來源，避免兩頁天數不一致 */}
+              <div
+                className="w-full px-3 py-3 bg-[#F6F3EB] border border-[#E9E5DA] rounded-lg text-sm text-[#1F1D17]"
+                title="週期天數由 Sprint Planning 的時間限制決定，請至 Sprint Planning 調整"
+              >
+                {sprintDays || '—'}
+              </div>
+              <div className="text-[11px] text-[#8B887E] leading-snug">
+                來自 Sprint Planning{planningTimeLabel ? `：${planningTimeLabel}` : ''}
+              </div>
               {(() => {
                 if (!sprintStartDate) return null;
                 const today = new Date(); today.setHours(0,0,0,0);
@@ -1140,19 +1157,19 @@ export default function Backlog() {
                   <ScrumTooltip keyword="Product Backlog" text="排序的 PBI (1-5)" />
                 </span>
               </div>
-              <div className="flex-1 bg-white border-r border-[#E9E5DA] p-3 flex items-center justify-center gap-1.5 min-w-[200px]">
+              <div className="flex-1 bg-[#FBF2ED] border-r border-[#E9E5DA] p-3 flex items-center justify-center gap-1.5 min-w-[200px]">
                 <span className="w-2 h-2 rounded-full bg-[#B8543C] flex-shrink-0" />
                 <span className="text-xs font-semibold text-[#5A574E]">TO DO (待處理)</span>
               </div>
-              <div className="flex-1 bg-white border-r border-[#E9E5DA] p-3 flex items-center justify-center gap-1.5 min-w-[200px]">
+              <div className="flex-1 bg-[#FAF4E7] border-r border-[#E9E5DA] p-3 flex items-center justify-center gap-1.5 min-w-[200px]">
                 <span className="w-2 h-2 rounded-full bg-[#B8893A] flex-shrink-0" />
                 <span className="text-xs font-semibold text-[#5A574E]">Doing (進行中)</span>
               </div>
-              <div className="flex-1 bg-white border-r border-[#E9E5DA] p-3 flex items-center justify-center gap-1.5 min-w-[200px]">
+              <div className="flex-1 bg-[#EFF4ED] border-r border-[#E9E5DA] p-3 flex items-center justify-center gap-1.5 min-w-[200px]">
                 <span className="w-2 h-2 rounded-full bg-[#4F7E5C] flex-shrink-0" />
                 <span className="text-xs font-semibold text-[#5A574E]">Done (已完成)</span>
               </div>
-              <div className="flex-1 bg-white p-3 flex items-center justify-center gap-1.5 min-w-[200px]">
+              <div className="flex-1 bg-[#F4F2EB] p-3 flex items-center justify-center gap-1.5 min-w-[200px]">
                 <span className="w-2 h-2 rounded-full bg-[#8B887E] flex-shrink-0" />
                 <span className="text-xs font-semibold text-[#5A574E]">
                   <ScrumTooltip keyword="Increment" text="驗收的 PBI (增量)" />
@@ -1216,7 +1233,7 @@ export default function Backlog() {
                   </div>
 
                   {/* TODO 欄 */}
-                  <div className="flex-1 p-2 border-r border-[#E9E5DA] bg-white flex flex-col min-w-[200px]"
+                  <div className="flex-1 p-2 border-r border-[#E9E5DA] bg-[#FBF2ED] flex flex-col min-w-[200px]"
                     onDragOver={onDragOver} onDrop={(e) => onDrop(e, 'todo', undefined, pbi.id)}>
                     <div className="flex justify-end gap-1 mb-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
@@ -1245,7 +1262,7 @@ export default function Backlog() {
                   </div>
 
                   {/* Doing 欄 */}
-                  <div className="flex-1 p-2 border-r border-[#E9E5DA] bg-white min-w-[200px]"
+                  <div className="flex-1 p-2 border-r border-[#E9E5DA] bg-[#FAF4E7] min-w-[200px]"
                     onDragOver={onDragOver} onDrop={(e) => onDrop(e, 'doing', undefined, pbi.id)}>
                     <div className="flex flex-col gap-2 h-full">
                       {renderTasks('doing', pbi.id)}
@@ -1253,7 +1270,7 @@ export default function Backlog() {
                   </div>
 
                   {/* Done 欄 */}
-                  <div className="flex-1 p-2 border-r border-[#E9E5DA] bg-white min-w-[200px]"
+                  <div className="flex-1 p-2 border-r border-[#E9E5DA] bg-[#EFF4ED] min-w-[200px]"
                     onDragOver={onDragOver} onDrop={(e) => onDrop(e, 'done', undefined, pbi.id)}>
                     <div className="flex flex-col gap-2 h-full">
                       {renderTasks('done', pbi.id)}
@@ -1261,7 +1278,7 @@ export default function Backlog() {
                   </div>
 
                   {/* 驗收欄 */}
-                  <div className="flex-1 p-4 bg-white flex flex-col items-center justify-center min-w-[200px] gap-3">
+                  <div className="flex-1 p-4 bg-[#F4F2EB] flex flex-col items-center justify-center min-w-[200px] gap-3">
                     {pbi.acceptedBy ? (
                       <div className="flex flex-col items-center gap-2 border border-[#4F7E5C] rounded-xl px-4 py-4 bg-[#DDE6D9] w-full text-center">
                         <CheckCircle2 size={22} strokeWidth={1.75} className="text-[#4F7E5C]" />
