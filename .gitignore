@@ -37,7 +37,10 @@ next-env.d.ts
 
 # local dev/patch scripts
 patch_*.js
-docs/
+# docs/ 整體不進版控，但設計文件與實作計畫要保留
+# （注意：必須寫 docs/* 而非 docs/，被排除的目錄底下無法用 ! 重新納入）
+docs/*
+!docs/superpowers/
 frames/
 shared/
 v1/
