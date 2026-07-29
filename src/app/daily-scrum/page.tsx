@@ -22,7 +22,7 @@ import CountdownTimer from '@/components/CountdownTimer';
 import {
   Clock, Target, AlertTriangle, ClipboardList, CalendarDays,
   User, Users, BarChart2, RefreshCw, ChevronDown,
-  CheckCircle2, Flag, Camera, ArrowRight, BookOpen, FileText,
+  CheckCircle2, Flag, Camera, ArrowRight, BookOpen, FileText, Trash2,
 } from 'lucide-react';
 
 interface BacklogTask {
@@ -246,6 +246,31 @@ export default function DailyScrum() {
 
   const toggleDay = (index: number) => {
     setActiveDay(index === activeDay ? null : index);
+  };
+
+  // 清空某一天的所有資料：三問紀錄、舊版紀錄、請假名單，並取消完成勾
+  const clearDay = (e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
+    const dayNum = index + 1;
+    if (!window.confirm(`確定清空 Day ${dayNum} 的所有資料嗎？此動作無法復原。`)) return;
+    // 注意：不能用 delete 移除鍵。Firestore setDoc(merge:true) 會逐鍵合併巢狀 map，
+    // 「不存在的鍵」不會送上雲端，舊值原封不動留著，onSnapshot 回傳後又被塞回畫面。
+    // 因此改成明確寫入空值覆蓋，清除才會真的生效。
+    const blank = <V,>(m: Record<number, unknown>, empty: V) => ({ ...(m || {}), [index]: empty });
+    const stored = data.completedDays || [];
+    const merged = stored.length >= sprintDays
+      ? [...stored]
+      : [...stored, ...Array(sprintDays - stored.length).fill(false)];
+    merged[index] = false;
+    updateData({
+      dailyNotes: blank(dailyNotes, '') as Record<number, string>,
+      dailyNotesQ1: blank(dailyNotesQ1, '') as Record<number, string>,
+      dailyNotesQ2: blank(dailyNotesQ2, '') as Record<number, string>,
+      dailyNotesQ3: blank(dailyNotesQ3, '') as Record<number, string>,
+      leaveStatus: blank(leaveStatus, [] as string[]) as Record<number, string[]>,
+      completedDays: merged,
+    });
+    setTimeout(() => forceSave(), 100);
   };
 
   const toggleCheck = (e: React.MouseEvent, index: number) => {
@@ -625,6 +650,15 @@ export default function DailyScrum() {
                         )}
                       </div>
 
+                      {/* 清空這天資料 (hover 顯示) */}
+                      <button
+                        onClick={(e) => clearDay(e, i)}
+                        className="absolute bottom-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md bg-white/90 border border-[#E9E5DA] text-[#8B887E] hover:text-[#B8543C] hover:bg-[#F0DDD3] shadow-sm"
+                        title="清空這天資料"
+                      >
+                        <Trash2 size={12} strokeWidth={1.75} />
+                      </button>
+
                       <div className={`font-bold text-base z-10 mt-2 ${
                         isChecked ? 'text-[#4F7E5C]' : holiday ? 'text-[#B8893A]' : isWeekend ? 'text-[#8B887E]' : 'text-[#1F1D17]'
                       }`}>
@@ -718,13 +752,20 @@ export default function DailyScrum() {
 
                           {/* 前一天唯讀紀錄 */}
                           {(() => {
+                            // 判斷某天是否「真的有內容」：空物件 {} 或全空字串的物件不算，
+                            // 才能正確跳過沒填的日子，往回找到上一個有資料的工作日。
+                            const dayHasContent = (day: number): boolean => {
+                              const check = (m: Record<number, unknown>) => {
+                                const v = m[day];
+                                if (!v) return false;
+                                if (typeof v === 'string') return v.trim() !== '';
+                                if (typeof v === 'object') return Object.values(v as Record<string, string>).some(t => t && String(t).trim() !== '');
+                                return false;
+                              };
+                              return check(dailyNotesQ1) || check(dailyNotesQ2) || check(dailyNotesQ3) || check(dailyNotes);
+                            };
                             let refDay = i - 1;
-                            while (refDay >= 0) {
-                              const hasRecord =
-                                dailyNotesQ1[refDay] || dailyNotesQ2[refDay] || dailyNotesQ3[refDay] || dailyNotes[refDay];
-                              if (hasRecord) break;
-                              refDay--;
-                            }
+                            while (refDay >= 0 && !dayHasContent(refDay)) refDay--;
                             if (refDay < 0) return null;
                             return (
                               <div className="bg-[#F6F3EB] border border-dashed border-[#D8D3C5] rounded-xl p-4">
