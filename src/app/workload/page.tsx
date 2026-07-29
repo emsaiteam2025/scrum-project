@@ -82,7 +82,8 @@ interface PersonLoad {
   sprintBreakdown: SprintBreakdown[];
 }
 
-function calcWorkingDays(startDate: string, totalDays: number): number {
+// 工作天＝扣掉週末與國定假日（與 Sprint Backlog 頁面的剩餘工作天算法一致）
+function calcWorkingDays(startDate: string, totalDays: number, holidaySet?: Set<string>): number {
   if (!startDate || totalDays <= 0) return totalDays;
   const start = new Date(startDate);
   if (isNaN(start.getTime())) return totalDays;
@@ -91,7 +92,9 @@ function calcWorkingDays(startDate: string, totalDays: number): number {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
     const dow = d.getDay();
-    if (dow !== 0 && dow !== 6) count++;
+    if (dow === 0 || dow === 6) continue;
+    if (holidaySet?.has(d.toISOString().slice(0, 10))) continue;
+    count++;
   }
   return count || 1;
 }
@@ -122,6 +125,29 @@ export default function WorkloadPage() {
   const [loadingData, setLoadingData] = useState(false);
   const [expandedPersons, setExpandedPersons] = useState<Set<string>>(new Set());
   const [showCompleted, setShowCompleted] = useState(false);
+  const [holidaySet, setHolidaySet] = useState<Set<string>>(new Set());
+
+  // 載入假日庫：先讀 localStorage 快取，登入者再從 users/{uid}.holidays 校正
+  // （使用者可能直接開 /workload，沒經過首頁，localStorage 不一定有資料）
+  useEffect(() => {
+    const apply = (list: { date: string }[]) =>
+      setHolidaySet(new Set(list.map(h => h.date).filter(Boolean)));
+    try {
+      const localH = localStorage.getItem('orgHolidays');
+      if (localH) apply(JSON.parse(localH));
+    } catch {}
+    if (!user) return;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists() && snap.data().holidays) {
+          const list = snap.data().holidays as { date: string }[];
+          apply(list);
+          localStorage.setItem('orgHolidays', JSON.stringify(list));
+        }
+      } catch {}
+    })();
+  }, [user]);
 
   // Load sprint list
   useEffect(() => {
@@ -172,7 +198,7 @@ export default function WorkloadPage() {
               sprintId,
               sprintName: sprint.name,
               sprintDays,
-              workingDays: calcWorkingDays(startDate, sprintDays),
+              workingDays: calcWorkingDays(startDate, sprintDays, holidaySet),
               startDate,
               devsList: (planning.devsList || []).filter((dev: Dev) => dev.name?.trim()),
               tasks: taskItems,
@@ -196,7 +222,7 @@ export default function WorkloadPage() {
       setLoadingData(false);
     };
     load();
-  }, [selectedIds, sprints]);
+  }, [selectedIds, sprints, holidaySet]);
 
   // Sprint 被視為「已完成」：任務數 > 0 且全部完成/驗收，或 sprintStatus === 'completed'
   const isSprintCompleted = useMemo(() => (sw: SprintWorkload) =>
@@ -234,7 +260,10 @@ export default function WorkloadPage() {
           for (let i = 0; i < sw.sprintDays; i++) {
             const d = new Date(start);
             d.setDate(start.getDate() + i);
-            if (d.getDay() !== 0 && d.getDay() !== 6) daySet.add(d.toISOString().slice(0, 10));
+            if (d.getDay() === 0 || d.getDay() === 6) continue;
+            const iso = d.toISOString().slice(0, 10);
+            if (holidaySet.has(iso)) continue;
+            daySet.add(iso);
           }
         }
 
@@ -286,7 +315,7 @@ export default function WorkloadPage() {
     const arr: PersonLoad[] = [];
     map.forEach(p => arr.push(p));
     return arr.sort((a, b) => b.loadPct - a.loadPct);
-  }, [activeWorkloads]);
+  }, [activeWorkloads, holidaySet]);
 
   const toggleSprint = (id: string) => {
     setSelectedIds(prev => {
@@ -505,6 +534,14 @@ export default function WorkloadPage() {
                           <span className="text-[#b5a695]"> 已分配 ÷ </span>
                           <strong className="text-[#3e362e]">{p.capacity}h</strong>
                           <span className="text-[#b5a695]"> 容量</span>
+                          {p.sprintBreakdown.length > 1 && (
+                            <span
+                              className="text-[#b5a695]"
+                              title={`橫跨 ${p.sprintBreakdown.length} 個 Sprint，重疊的工作日只計算一次（不重複累加容量）`}
+                            >
+                              （{p.sprintBreakdown.length} 個 Sprint 工作日聯集）
+                            </span>
+                          )}
                         </span>
                         <span className="hidden sm:flex items-center gap-2 text-[10px] text-[#8a7f72]">
                           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-[#8fb996] inline-block"/>完成 {p.done}h</span>
