@@ -13,6 +13,56 @@ export interface JournalRawData { allData: JSprintData[]; loadLines: string[]; h
 
 export const WEEKDAYS_J_MOD = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
 
+// ── Sprint 是否「進行中」──
+// 首頁的預設勾選與 LINE 定時推播共用這一份判斷。兩邊各寫一份的話，就會出現
+// 「畫面上明明三個在跑、LINE 回報卻只有兩個」這種對不起來的狀況。
+export interface SprintProgressInput {
+  sprintStatus?: string;
+  totalTasks: number;
+  todo: number;
+  doing: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+export function isSprintInProgress(x: SprintProgressInput, todayIso: string): boolean {
+  if (x.sprintStatus === 'in-progress') return true;
+  if (x.sprintStatus === 'completed' || x.sprintStatus === 'pending') return false;
+  if (x.totalTasks > 0 && x.todo === 0 && x.doing === 0) return false; // 有任務且全部完成
+  if (x.doing > 0) return true;
+  // 全是待辦、或還沒建任何任務：用日期範圍判斷。
+  // 「還沒建任務」不能直接判定成非進行中——剛開的 Sprint 本來就還沒拆任務，
+  // 但它今天確實在跑，該出現在回報裡（只是內容顯示「尚無紀錄」）。
+  if (x.startDate && x.endDate) return todayIso >= x.startDate && todayIso <= x.endDate;
+  return true;
+}
+
+// 從整份 sprint 文件推出判斷所需欄位。cron 端沒有前端 dashboards 那份快取，
+// 計法必須與 page.tsx 的 dashboard 一致：只算屬於現存 PBI 的任務（排除孤兒任務）。
+export function sprintProgressFromDoc(doc: SprintDoc & { sprintStatus?: string }): SprintProgressInput {
+  const backlog = (doc.backlog || {}) as Record<string, unknown>;
+  const planning = (doc.planning || {}) as Record<string, unknown>;
+  const tasks = (Array.isArray(backlog.tasks) ? backlog.tasks : []) as Record<string, unknown>[];
+  const pbiIds = new Set(tasks.filter(t => t.status === 'pbi').map(t => t.id));
+  const real = tasks.filter(t => t.type === 'task' && t.pbiId && pbiIds.has(t.pbiId));
+  const startDate = typeof planning.startDate === 'string' ? planning.startDate : '';
+  const sprintDays = Number(backlog.sprintDays ?? 0);
+  let endDate = '';
+  if (startDate && sprintDays > 0) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + sprintDays - 1);
+    endDate = d.toISOString().slice(0, 10);
+  }
+  return {
+    sprintStatus: doc.sprintStatus,
+    totalTasks: real.length,
+    todo: real.filter(t => t.status === 'todo').length,
+    doing: real.filter(t => t.status === 'doing').length,
+    startDate,
+    endDate,
+  };
+}
+
 const DIVIDER_HEAVY = '══════════════════════════════';
 const DIVIDER_LIGHT = '──────────────────────────────';
 

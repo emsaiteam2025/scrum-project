@@ -10,6 +10,22 @@ export interface SprintUser {
   email: string | null;
 }
 
+export interface SprintPlanning {
+  po?: string;
+  devs?: string;
+  devsList?: { name: string }[];
+}
+
+// 開發成員有兩種存法：結構化的 devsList，以及舊的逗號分隔字串 devs
+export function getDevNames(planning?: SprintPlanning): string[] {
+  if (!planning) return [];
+  if (Array.isArray(planning.devsList) && planning.devsList.length > 0)
+    return planning.devsList.map(d => d.name).filter(Boolean);
+  if (typeof planning.devs === 'string' && planning.devs)
+    return planning.devs.split(',').map(n => n.trim()).filter(Boolean);
+  return [];
+}
+
 export async function fetchAccessibleSprints<T>(user: SprintUser): Promise<(T & { id: string })[]> {
   const ref = collection(db, 'sprints');
   const byId = new Map<string, T & { id: string }>();

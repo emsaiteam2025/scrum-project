@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, query, where } from 'firebase/firestore';
 import { lineMultiPush } from '@/lib/line';
-import { assembleJournalRaw, buildDailyText, buildWeeklyText, type SprintDoc } from '@/lib/journal';
+import {
+  assembleJournalRaw, buildDailyText, buildWeeklyText,
+  isSprintInProgress, sprintProgressFromDoc, type SprintDoc,
+} from '@/lib/journal';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -33,6 +36,36 @@ export async function GET(req: NextRequest) {
     return snap.exists() ? (snap.data() as SprintDoc) : null;
   };
 
+  // 發送當下即時解析「這個使用者目前進行中的 Sprint」。
+  // 舊做法是用排程文件裡的 cfg.sprintIds，那是使用者上次存排程／匯出日誌當下的快照：
+  // 之後新開的 Sprint 永遠不會被加進去，於是出現「今天三個在跑、回報只有兩個」。
+  // lineSchedule 的文件 id 就是使用者 uid，可直接拿來查他擁有的 sprint。
+  const resolveActiveSprintIds = async (ownerId: string, carried: string[]): Promise<string[]> => {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    const push = (id: string) => { if (!seen.has(id)) { seen.add(id); ids.push(id); } };
+    const active = (d: unknown) =>
+      isSprintInProgress(sprintProgressFromDoc(d as SprintDoc & { sprintStatus?: string }), todayIso);
+
+    // 1) 自己擁有、目前進行中的
+    try {
+      const snap = await getDocs(query(collection(db, 'sprints'), where('ownerId', '==', ownerId)));
+      snap.docs.forEach(d => { if (active(d.data())) push(d.id); });
+    } catch { /* 查詢失敗就只靠下面的舊清單 */ }
+
+    // 2) 排程存的舊清單裡、仍在進行中的：首頁的 Sprint 清單含「別人建立、我是協作者」
+    //    的 Sprint，而協作查詢要 email、cron 只有 uid 查不到。若只取 ownerId 的結果，
+    //    協作中的 Sprint 會從回報裡消失——那是拿一個 bug 換另一個。
+    for (const id of carried) {
+      if (seen.has(id)) continue;
+      try {
+        const d = await readSprint(id);
+        if (d && active(d)) push(id);
+      } catch { /* 單筆讀取失敗不影響其他 */ }
+    }
+    return ids;
+  };
+
   const schedulesSnap = await getDocs(collection(db, 'lineSchedule'));
   const results: string[] = [];
 
@@ -45,10 +78,16 @@ export async function GET(req: NextRequest) {
     if (!wantDaily && !wantWeekly) continue;
 
     // 於「實際發送當下」用發送當天日期即時重算，避免推到別天的舊快照。
-    // 舊資料若尚無 sprintIds，回退到既有的 lastDailyText/lastWeeklyText。
+    // 清單同樣即時解析；查詢失敗或查不到進行中的 Sprint 時，才退回排程存的舊清單，
+    // 避免因為一次查詢異常就整份不推播。都沒有才退回烤好的 lastDailyText/lastWeeklyText。
+    const carried = cfg.sprintIds || [];
+    let sprintIds: string[] = [];
+    try { sprintIds = await resolveActiveSprintIds(docSnap.id, carried); } catch { sprintIds = []; }
+    if (sprintIds.length === 0 && carried.length) sprintIds = carried;
+
     let raw = null;
-    if (cfg.sprintIds?.length) {
-      try { raw = await assembleJournalRaw(cfg.sprintIds, readSprint); } catch { raw = null; }
+    if (sprintIds.length) {
+      try { raw = await assembleJournalRaw(sprintIds, readSprint); } catch { raw = null; }
     }
 
     if (wantDaily) {

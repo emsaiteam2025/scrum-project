@@ -6,12 +6,19 @@
 
 import React from 'react';
 import { Zap } from 'lucide-react';
+import { getDevNames } from '@/lib/sprints';
 
 export interface DigestSprint {
   id: string;
   name?: string;
   createdAt?: number;
-  planning?: { startDate?: string; sprintName?: string };
+  planning?: {
+    startDate?: string;
+    sprintName?: string;
+    po?: string;
+    devs?: string;
+    devsList?: { name: string }[];
+  };
   retrospective?: { actionItems?: string };
 }
 
@@ -55,6 +62,8 @@ export default function ActionItemsDigest({
       id: s.id,
       title: sprintTitle(s),
       date: sprintDateLabel(s),
+      po: s.planning?.po?.trim() || '',
+      devs: getDevNames(s.planning),
       lines: splitActionLines(s.retrospective!.actionItems!),
     }))
     .reverse();
@@ -82,7 +91,9 @@ export default function ActionItemsDigest({
             目前還沒有任何 Sprint 填寫改善行動。在 Sprint Retrospective 的「挑戰最大效益來改」填寫後就會彙整到這裡。
           </p>
         ) : (
-          <div className="space-y-4">
+          // 卡片本身很窄（一則行動多半一兩行），單欄排在寬螢幕會空掉大半個版面。
+          // 依寬度分欄，items-start 讓每張卡片各自貼齊頂端、不被同列最高的撐開。
+          <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-x-8 gap-y-5 items-start">
             {entries.map(e => (
               <div key={e.id} className="border-l-[3px] border-l-[#C96442] pl-4">
                 <div className="flex items-baseline gap-2 flex-wrap">
@@ -92,6 +103,20 @@ export default function ActionItemsDigest({
                     <span className="text-[10px] text-[#C96442] bg-[#F5E4DA] px-2 py-0.5 rounded-full">本次</span>
                   )}
                 </div>
+                {(e.po || e.devs.length > 0) && (
+                  <div className="mt-1 flex flex-wrap items-baseline gap-x-4 gap-y-0.5 text-[11px] text-[#8B887E]">
+                    {e.po && (
+                      <span>
+                        PO：<span className="text-[#5A574E]">{e.po}</span>
+                      </span>
+                    )}
+                    {e.devs.length > 0 && (
+                      <span>
+                        開發人員：<span className="text-[#5A574E]">{e.devs.join('、')}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
                 <ul className="mt-1.5 space-y-1">
                   {e.lines.map((line, i) => (
                     <li key={i} className="text-xs text-[#5A574E] leading-relaxed flex gap-2">

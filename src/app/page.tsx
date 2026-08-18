@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
 import { db } from '@/lib/firebase';
 import { collection, doc, getDocs, getDoc, setDoc, deleteDoc, query, where } from 'firebase/firestore';
+import { isSprintInProgress as isSprintInProgressRule } from '@/lib/journal';
 import { BookOpen, Settings, BarChart2, ClipboardList, Plus, Folder, Zap, CheckCircle2, Scale, LayoutGrid, Calendar, ChevronRight, RefreshCw, Users, Target, X, Circle } from 'lucide-react';
 
 const AV_PAL = ['#C96442', '#4F7E5C', '#B8893A', '#467386', '#8B5A2B', '#5A574E'];
@@ -683,22 +684,22 @@ export default function SprintList() {
     fetchDashboard();
   }, [sprints, loading, user]);
 
-  // 判斷某 Sprint 是否「進行中」
-  // 優先順序：① 明確的 sprintStatus → ② 有 doing 任務 → ③ 日期範圍內 → ④ 有任務但未全完成
+  // 判斷某 Sprint 是否「進行中」：規則放在 lib/journal 由畫面與 LINE 定時推播共用，
+  // 各寫一份就會出現「畫面上三個在跑、LINE 回報只有兩個」的落差。
   const isSprintInProgress = (s: Sprint): boolean => {
-    if (s.sprintStatus === 'in-progress') return true;
-    if (s.sprintStatus === 'completed' || s.sprintStatus === 'pending') return false;
     const d = dashboards[s.id];
-    const total = d?.totalTasks ?? 0;
-    if (total === 0) return false;
-    const td = d?.todo ?? 0;
-    const dg = d?.doing ?? 0;
-    if (td === 0 && dg === 0) return false; // 全部已完成
-    if (dg > 0) return true;               // 有任務進行中，確定是進行中
-    // 全為 todo：用日期範圍輔助判斷
-    const today = new Date().toISOString().slice(0, 10);
-    if (d?.startDate && d?.endDate) return today >= d.startDate && today <= d.endDate;
-    return true; // 有未完成任務但無日期，視為進行中
+    // 用當地日期而非 toISOString()（UTC）：台灣早上 8 點前 UTC 還停在昨天，
+    // 會讓今天才開始的 Sprint 被日期範圍判成尚未開始。
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    return isSprintInProgressRule({
+      sprintStatus: s.sprintStatus,
+      totalTasks: d?.totalTasks ?? 0,
+      todo: d?.todo ?? 0,
+      doing: d?.doing ?? 0,
+      startDate: d?.startDate,
+      endDate: d?.endDate,
+    }, today);
   };
 
   // 預設勾選「進行中」Sprint（等 sprints 與 dashboards 都載完才執行）

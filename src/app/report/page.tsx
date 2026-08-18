@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
-import { fetchAccessibleSprints } from '@/lib/sprints';
+import { fetchAccessibleSprints, getDevNames } from '@/lib/sprints';
 import ActionItemsDigest from '@/components/ActionItemsDigest';
 import {
   Home, Printer, Calendar, X, BarChart2, TrendingUp,
@@ -44,15 +44,6 @@ interface SprintDoc {
   review?: { opening?: string; demo?: string; market?: string; future?: string };
   retrospective?: { keepStart?: string; problemStop?: string; actionItems?: string; previousActions?: string };
   editHistory?: { email: string; name: string; ts: number; page: string }[];
-}
-
-function getDevNames(planning: SprintDoc['planning']): string[] {
-  if (!planning) return [];
-  if (Array.isArray(planning.devsList) && planning.devsList.length > 0)
-    return planning.devsList.map(d => d.name).filter(Boolean);
-  if (typeof planning.devs === 'string' && planning.devs)
-    return planning.devs.split(',').map(n => n.trim()).filter(Boolean);
-  return [];
 }
 
 function pct(n: number, total: number) {
