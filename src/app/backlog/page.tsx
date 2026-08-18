@@ -5,7 +5,10 @@ import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import SaveIndicator from '@/components/SaveIndicator';
 import { jDays } from '@/lib/journal';
-import type { Task, DevMember } from '@/lib/taskTypes';
+import type { Task, DevMember, Subtask } from '@/lib/taskTypes';
+import { parseRoleNames } from '@/lib/taskTypes';
+import SubtaskList from '@/components/SubtaskList';
+import { useAuth } from '@/components/AuthProvider';
 import {
   Camera, Kanban, Target, BarChart2,
   ChevronUp, ChevronDown, Copy, Pencil, Trash2,
@@ -30,9 +33,12 @@ export default function Backlog() {
   const [holidays, setHolidays] = useState<{ id: string; date: string; name: string }[]>([]);
   const [mobileStatusFilter, setMobileStatusFilter] = useState<'all' | 'todo' | 'doing' | 'done'>('all');
   const [dateLabel, setDateLabel] = useState<string>('');
-  // sprintOwnerId 供後續任務（子任務權限判斷）使用，此任務僅負責載入
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // sprintOwnerId 供子任務權限判斷使用（判斷誰是 Scrum Master／擁有者）
   const [sprintOwnerId, setSprintOwnerId] = useState<string | undefined>(undefined);
+  const { user } = useAuth();
+  // 子任務與附件都需要 sprintId；不可在 JSX 內直接讀 localStorage（會造成 hydration 不一致）
+  const [currentSprintId, setCurrentSprintId] = useState('');
+  useEffect(() => { setCurrentSprintId(localStorage.getItem('currentSprintId') || ''); }, []);
   useEffect(() => {
     setDateLabel(new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }));
   }, []);
@@ -428,6 +434,25 @@ export default function Backlog() {
     setTasks((prev: Task[]) => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
   };
 
+  const updateSubtasks = (taskId: string, next: Subtask[]) => {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, subtasks: next } : t));
+  };
+
+  // 子任務全數完成時詢問是否把父任務標為完成。
+  // 使用者按取消後，同一張任務在本次瀏覽階段不再重複詢問。
+  const askedAllDoneRef = useRef<Set<string>>(new Set());
+  const handleAllSubtasksDone = (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task || task.status === 'done' || task.status === 'accepted') return;
+    if (askedAllDoneRef.current.has(taskId)) return;
+    askedAllDoneRef.current.add(taskId);
+    setTimeout(() => {
+      if (window.confirm('全部子任務已完成，要把這張任務標為完成嗎？')) {
+        updateTask(taskId, 'status', 'done');
+      }
+    }, 0);
+  };
+
   const copyTask = (id: string) => {
     setTasks((prev: Task[]) => {
       const index = prev.findIndex(t => t.id === id);
@@ -606,6 +631,22 @@ export default function Backlog() {
                 <div className="mt-auto pt-2 flex items-center justify-between border-t border-[#E9E5DA]">
                   {task.role && <div className="text-[11px] text-[#5A574E] bg-[#F6F3EB] px-1.5 py-0.5 rounded">{task.role}</div>}
                   {task.time && <div className="text-xs text-[#8B887E]">{task.time}</div>}
+                </div>
+              )}
+              {task.type === 'task' && (
+                <div onDragStart={e => e.stopPropagation()} draggable={false}>
+                  <SubtaskList
+                    subtasks={task.subtasks || []}
+                    roleNames={parseRoleNames(task.role)}
+                    devMembers={data.devMembers || []}
+                    sprint={{ ownerId: sprintOwnerId }}
+                    planning={data.planning}
+                    user={user}
+                    sprintId={currentSprintId}
+                    currentUserEmail={user?.email || ''}
+                    onChange={next => updateSubtasks(task.id, next)}
+                    onAllDone={() => handleAllSubtasksDone(task.id)}
+                  />
                 </div>
               )}
             </>
@@ -1006,22 +1047,36 @@ export default function Backlog() {
                               </div>
                             </div>
                           ) : (
-                            <div className="flex justify-between items-start gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="font-semibold text-sm text-[#1F1D17] break-words">{task.title}</div>
-                                {task.desc && <div className="text-xs text-[#5A574E] mt-0.5 break-words whitespace-pre-wrap">{task.desc}</div>}
-                                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${sC[task.status]}`}>{sL[task.status]}</span>
-                                  {task.role && <span className="text-[10px] text-[#5A574E] bg-[#F6F3EB] px-1.5 py-0.5 rounded">{task.role}</span>}
-                                  {task.time && <span className="text-[10px] text-[#8B887E]">{task.time}</span>}
+                            <>
+                              <div className="flex justify-between items-start gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold text-sm text-[#1F1D17] break-words">{task.title}</div>
+                                  {task.desc && <div className="text-xs text-[#5A574E] mt-0.5 break-words whitespace-pre-wrap">{task.desc}</div>}
+                                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${sC[task.status]}`}>{sL[task.status]}</span>
+                                    {task.role && <span className="text-[10px] text-[#5A574E] bg-[#F6F3EB] px-1.5 py-0.5 rounded">{task.role}</span>}
+                                    {task.time && <span className="text-[10px] text-[#8B887E]">{task.time}</span>}
+                                  </div>
+                                </div>
+                                <div className="flex gap-1 flex-shrink-0">
+                                  <button onClick={()=>copyTask(task.id)} className="text-[#8B887E] hover:text-[#4F7E5C] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="複製"><Copy size={13} strokeWidth={1.75} /></button>
+                                  <button onClick={()=>setEditingTaskId(task.id)} className="text-[#8B887E] hover:text-[#1F1D17] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="編輯"><Pencil size={13} strokeWidth={1.75} /></button>
+                                  <button onClick={()=>deleteTask(task.id)} className="text-[#8B887E] hover:text-[#B8543C] hover:bg-[#F0DDD3] p-1.5 rounded-md transition-all" title="刪除"><Trash2 size={13} strokeWidth={1.75} /></button>
                                 </div>
                               </div>
-                              <div className="flex gap-1 flex-shrink-0">
-                                <button onClick={()=>copyTask(task.id)} className="text-[#8B887E] hover:text-[#4F7E5C] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="複製"><Copy size={13} strokeWidth={1.75} /></button>
-                                <button onClick={()=>setEditingTaskId(task.id)} className="text-[#8B887E] hover:text-[#1F1D17] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="編輯"><Pencil size={13} strokeWidth={1.75} /></button>
-                                <button onClick={()=>deleteTask(task.id)} className="text-[#8B887E] hover:text-[#B8543C] hover:bg-[#F0DDD3] p-1.5 rounded-md transition-all" title="刪除"><Trash2 size={13} strokeWidth={1.75} /></button>
-                              </div>
-                            </div>
+                              <SubtaskList
+                                subtasks={task.subtasks || []}
+                                roleNames={parseRoleNames(task.role)}
+                                devMembers={data.devMembers || []}
+                                sprint={{ ownerId: sprintOwnerId }}
+                                planning={data.planning}
+                                user={user}
+                                sprintId={currentSprintId}
+                                currentUserEmail={user?.email || ''}
+                                onChange={next => updateSubtasks(task.id, next)}
+                                onAllDone={() => handleAllSubtasksDone(task.id)}
+                              />
+                            </>
                           )}
                         </div>
                       );
