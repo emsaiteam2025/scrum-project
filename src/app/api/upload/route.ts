@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   }
 
   const file = form.get('file');
-  const sprintId = String(form.get('sprintId') || 'unknown');
+  const sprintId = String(form.get('sprintId') || 'unknown').replace(/[^A-Za-z0-9_-]/g, '_') || 'unknown';
   const uploadedBy = String(form.get('uploadedBy') || '');
 
   if (!(file instanceof File)) {
@@ -74,11 +74,19 @@ export async function DELETE(req: Request) {
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     return NextResponse.json({ error: '尚未設定 BLOB_READ_WRITE_TOKEN。' }, { status: 500 });
   }
+  let body: unknown;
   try {
-    const { url } = await req.json();
-    if (!url || typeof url !== 'string') {
-      return NextResponse.json({ error: '缺少要刪除的檔案網址。' }, { status: 400 });
-    }
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: '無法解析刪除請求內容。' }, { status: 400 });
+  }
+
+  const url = (body as { url?: unknown } | null)?.url;
+  if (!url || typeof url !== 'string') {
+    return NextResponse.json({ error: '缺少要刪除的檔案網址。' }, { status: 400 });
+  }
+
+  try {
     await del(url);
     return NextResponse.json({ ok: true });
   } catch (err) {
