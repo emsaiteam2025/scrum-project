@@ -6,7 +6,7 @@ import { useAuth } from '@/components/AuthProvider';
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { BookOpen, Brain, ClipboardList, Check, Eye, Pencil, X } from 'lucide-react';
+import { BookOpen, Brain, ClipboardList, Check, Eye, Pencil, X, ListChecks } from 'lucide-react';
 
 const pageNameMap: Record<string, string> = {
   planning: 'Sprint Planning',
@@ -131,7 +131,14 @@ export default function Navigation() {
             <Brain size={15} strokeWidth={1.75} />
             知識學習
           </Link>
-          <span className="text-[10px] font-mono text-[#B5B2A6] ml-1">v1.0.246</span>
+          <Link
+            href="/my-tasks"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[#E9E5DA] text-[#5A574E] rounded-lg text-sm hover:shadow-sm hover:-translate-y-[1px] transition-all duration-150 whitespace-nowrap"
+          >
+            <ListChecks size={15} strokeWidth={1.75} />
+            我的工作
+          </Link>
+          <span className="text-[10px] font-mono text-[#B5B2A6] ml-1">v1.0.250</span>
         </div>
 
         {currentSprintName && (

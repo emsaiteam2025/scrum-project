@@ -35,7 +35,7 @@ export default function Home() {
     po: '',
     sm: '',
     devs: '',
-    devsList: [{ id: '1', name: '', role: '' }] as { id: string; name: string; role: string }[],
+    devsList: [{ id: '1', name: '', role: '', email: '' }] as { id: string; name: string; role: string; email: string }[],
     whys: [{ id: '1', text: '' }],
     whats: [{ id: '1', text: '' }],
     hows: [{ id: '1', text: '' }]
@@ -51,33 +51,65 @@ export default function Home() {
       const names = data.devs.split(/[,、，\n]/).map(s => s.trim()).filter(Boolean);
       if (names.length > 0) {
         updateData({
-          devsList: names.map((name, i) => ({ id: `${Date.now()}-${i}`, name, role: '' }))
+          devsList: names.map((name, i) => ({ id: `${Date.now()}-${i}`, name, role: '', email: '' }))
         });
       }
     }
     devsHydratedRef.current = true;
   }, [loading, data.devs, data.devsList, updateData]);
 
-  const syncDevsString = (list: { id: string; name: string; role: string }[]) => {
+  const syncDevsString = (list: { id: string; name: string; role: string; email: string }[]) => {
     const joined = list.map(d => d.name.trim()).filter(Boolean).join(',');
     updateData({ devsList: list, devs: joined });
   };
 
-  const updateDev = (index: number, field: 'name' | 'role', value: string) => {
+  const updateDev = (index: number, field: 'name' | 'role' | 'email', value: string) => {
     const list = [...(data.devsList || [])];
     list[index] = { ...list[index], [field]: value };
     syncDevsString(list);
   };
 
   const addDev = () => {
-    const list = [...(data.devsList || []), { id: Date.now().toString(), name: '', role: '' }];
+    const list = [...(data.devsList || []), { id: Date.now().toString(), name: '', role: '', email: '' }];
     syncDevsString(list);
   };
 
   const removeDev = (index: number) => {
     const list = (data.devsList || []).filter((_, i) => i !== index);
-    syncDevsString(list.length > 0 ? list : [{ id: Date.now().toString(), name: '', role: '' }]);
+    syncDevsString(list.length > 0 ? list : [{ id: Date.now().toString(), name: '', role: '', email: '' }]);
   };
+
+  // 把成員表裡填了 email 的人自動加進 Sprint 協作者（editor），
+  // 讓他登入後能讀到這個 Sprint。已存在者不覆蓋其原有角色。
+  const syncMembersToCollaborators = React.useCallback(async () => {
+    const sprintId = localStorage.getItem('currentSprintId');
+    if (!sprintId) return;
+    const memberEmails = (data.devsList || [])
+      .map(d => (d.email || '').trim().toLowerCase())
+      .filter(Boolean);
+    if (memberEmails.length === 0) return;
+
+    try {
+      const { doc, getDoc, setDoc } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase');
+      const ref = doc(db, 'sprints', sprintId);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return;
+
+      const existing: { email: string; role: string }[] = snap.data().collaborators || [];
+      const existingSet = new Set(existing.map(c => (c.email || '').toLowerCase()));
+      const toAdd = memberEmails.filter(e => !existingSet.has(e));
+      if (toAdd.length === 0) return;
+
+      const merged = [...existing, ...toAdd.map(email => ({ email, role: 'editor' }))];
+      await setDoc(ref, {
+        collaborators: merged,
+        collaboratorEmails: merged.map(c => (c.email || '').toLowerCase()),
+      }, { merge: true });
+    } catch (err) {
+      console.warn('[Planning] 同步協作者失敗', err);
+    }
+  }, [data.devsList]);
 
   // 元件載入時讀取 API Key，並從 Firestore 取得最新專案名稱
   React.useEffect(() => {
@@ -613,7 +645,7 @@ export default function Home() {
                             key={m.id}
                             onClick={() => {
                               if (alreadyAdded) return;
-                              const list = [...(data.devsList || []).filter(d => (d.name || '').trim()), { id: Date.now().toString(), name: m.name, role: m.role }];
+                              const list = [...(data.devsList || []).filter(d => (d.name || '').trim()), { id: Date.now().toString(), name: m.name, role: m.role, email: '' }];
                               syncDevsString(list);
                             }}
                             disabled={alreadyAdded}
@@ -646,30 +678,42 @@ export default function Home() {
 
                   <div className="bg-white border border-[#E9E5DA] rounded-lg divide-y divide-[#E9E5DA]">
                     {(data.devsList || []).map((dev, i) => (
-                      <div key={dev.id} className="flex items-center gap-2 px-3 py-2">
+                      <div key={dev.id} className="flex items-start gap-2 px-3 py-2">
                         <span
-                          className="w-7 h-7 rounded-full text-white text-xs font-semibold flex items-center justify-center flex-shrink-0"
+                          className="w-7 h-7 rounded-full text-white text-xs font-semibold flex items-center justify-center flex-shrink-0 mt-0.5"
                           style={{ backgroundColor: AV_PAL[i % AV_PAL.length] }}
                         >
                           {(dev.name || '?').slice(0, 1) || '?'}
                         </span>
-                        <input
-                          type="text"
-                          value={dev.name}
-                          onChange={e => updateDev(i, 'name', e.target.value)}
-                          className="flex-1 min-w-0 bg-transparent border-b border-transparent focus:border-[#C96442] outline-none text-sm text-[#1F1D17] placeholder-[#B5B2A6]"
-                          placeholder="姓名"
-                        />
-                        <input
-                          type="text"
-                          value={dev.role}
-                          onChange={e => updateDev(i, 'role', e.target.value)}
-                          className="w-32 bg-transparent border-b border-transparent focus:border-[#C96442] outline-none text-xs text-[#8B887E] placeholder-[#B5B2A6]"
-                          placeholder="角色（例：Tech Lead）"
-                        />
+                        <div className="flex-1 min-w-0 flex flex-col gap-1">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={dev.name}
+                              onChange={e => updateDev(i, 'name', e.target.value)}
+                              className="flex-1 min-w-0 bg-transparent border-b border-transparent focus:border-[#C96442] outline-none text-sm text-[#1F1D17] placeholder-[#B5B2A6]"
+                              placeholder="姓名"
+                            />
+                            <input
+                              type="text"
+                              value={dev.role}
+                              onChange={e => updateDev(i, 'role', e.target.value)}
+                              className="w-32 bg-transparent border-b border-transparent focus:border-[#C96442] outline-none text-xs text-[#8B887E] placeholder-[#B5B2A6]"
+                              placeholder="角色（例：Tech Lead）"
+                            />
+                          </div>
+                          <input
+                            type="email"
+                            value={dev.email || ''}
+                            onChange={e => updateDev(i, 'email', e.target.value)}
+                            onBlur={() => syncMembersToCollaborators()}
+                            className="bg-transparent border-b border-transparent focus:border-[#C96442] outline-none text-xs text-[#8B887E] placeholder-[#B5B2A6]"
+                            placeholder="Google 帳號 Email（填了才能登入認領自己的工作）"
+                          />
+                        </div>
                         <button
                           onClick={() => removeDev(i)}
-                          className="text-[#B5B2A6] hover:text-[#B8543C] px-1.5 py-1 rounded transition-colors shrink-0"
+                          className="text-[#B5B2A6] hover:text-[#B8543C] px-1.5 py-1 rounded transition-colors shrink-0 mt-0.5"
                           title="移除這位成員"
                         >
                           <X size={14} strokeWidth={1.75} />
@@ -684,6 +728,9 @@ export default function Home() {
                     <Plus size={14} strokeWidth={1.75} />
                     新增成員
                   </button>
+                  <div className="text-xs text-[#8B887E]">
+                    填入成員的 Google 帳號 Email 後，該成員會自動成為本專案協作者，登入後即可在「我的工作」看到並編輯指派給自己的項目。
+                  </div>
                 </div>
 
                 {/* 利害關係人 / 專家 */}

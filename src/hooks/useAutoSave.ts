@@ -60,6 +60,8 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
   const sprintIdRef = useRef<string | null>(null);
   const lastSavedDataRef = useRef<T | null>(null);
   const initialDataRef = useRef<T>(initialData);
+  // 本機有未儲存變更時收到的遠端更新：先暫存，等本機存檔落地後再補上，避免遠端變更永久遺失
+  const pendingRemoteRef = useRef<Record<string, unknown> | null>(null);
 
   const [sprintId, setSprintId] = useState<string | null>(null);
 
@@ -81,6 +83,7 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
       isDirty.current = false;
       saveGeneration.current++;
       lastSavedDataRef.current = null;
+      pendingRemoteRef.current = null;
       setData(initialDataRef.current);
       setLoading(true);
       setSaveStatus('idle');
@@ -145,6 +148,7 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
       const merged = { ...initialData, ...(mainData ?? {}), ...(draftData ?? {}) } as T;
       setData(merged);
       lastSavedDataRef.current = { ...initialData, ...(mainData ?? {}) } as T;
+      pendingRemoteRef.current = null;
       if (draftData) {
         isDirty.current = true;
         saveGeneration.current++;
@@ -171,13 +175,32 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
     // 記錄儲存開始時的編輯世代，用來判斷儲存期間是否有新的用戶編輯
     const genAtStart = saveGeneration.current;
 
+    // 變更欄位在寫入前先算好：既用來決定這次要寫哪些頂層欄位，也沿用給編輯歷史
+    const prev = lastSavedDataRef.current as Record<string, unknown> | null;
+    const curr = currentData as Record<string, unknown>;
+    const changedKeys = prev
+      ? Object.keys(curr).filter(k => JSON.stringify(prev[k]) !== JSON.stringify(curr[k]))
+      : Object.keys(curr).filter(k => { const v = curr[k]; return v !== '' && v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0); });
+
     if (currentUser) {
+      // 只把「有變動的頂層欄位」放進 payload，其餘欄位（例如 backlog.tasks）完全不帶。
+      // 仍使用 setDoc(merge:true)：它會把 payload 併進雲端既有的 map，
+      // 沒帶到的欄位原封不動，而巢狀 map（daily.dailyNotes、leaveStatus 等）
+      // 也維持逐鍵深合併，不會被整個取代。
+      // prev 為 null（首次存檔，文件可能還不存在）時整包寫入以建立文件。
+      const pickChanged: Record<string, unknown> = {};
+      for (const k of changedKeys) pickChanged[k] = curr[k];
+      const payload = prev ? pickChanged : (currentData as unknown as Record<string, unknown>);
+      const shouldWrite = !prev || changedKeys.length > 0;
+
       let lastErr: unknown;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt));
           const docRef = doc(db, 'sprints', sid);
-          await setDoc(docRef, { [pageKey]: currentData }, { merge: true });
+          if (shouldWrite) {
+            await setDoc(docRef, { [pageKey]: payload }, { merge: true });
+          }
           localStorage.removeItem(`draft_sprint_${sid}_${pageKey}`);
           // 只有在儲存期間沒有新的用戶編輯時，才重置 isDirty
           // 避免覆蓋儲存過程中產生的新變更
@@ -187,11 +210,6 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
           setSaveStatus('saved');
           console.log(`[AutoSave] 雲端儲存成功: ${pageKey}`);
           // 記錄編輯歷史：有實際變更才記錄，無冷卻限制
-          const prev = lastSavedDataRef.current as Record<string, unknown> | null;
-          const curr = currentData as Record<string, unknown>;
-          const changedKeys = prev
-            ? Object.keys(curr).filter(k => JSON.stringify(prev[k]) !== JSON.stringify(curr[k]))
-            : Object.keys(curr).filter(k => { const v = curr[k]; return v !== '' && v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0); });
           if (changedKeys.length > 0) {
             const changes = generateChangeDiff(pageKey, prev ?? {}, curr, changedKeys);
             updateDoc(doc(db, 'sprints', sid), {
@@ -199,6 +217,21 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
             }).catch(() => {});
           }
           lastSavedDataRef.current = JSON.parse(JSON.stringify(currentData));
+          // 補上先前因本機有未存變更而被暫存的遠端更新（排除這次剛寫出去的欄位，避免自己蓋自己）
+          if (pendingRemoteRef.current && !isDirty.current) {
+            const pending = pendingRemoteRef.current;
+            pendingRemoteRef.current = null;
+            const savedKeys = new Set(changedKeys);
+            const catchUp: Record<string, unknown> = {};
+            for (const k of Object.keys(pending)) {
+              if (!savedKeys.has(k)) catchUp[k] = pending[k];
+            }
+            if (Object.keys(catchUp).length > 0) {
+              setData(p => ({ ...p, ...catchUp }));
+              lastSavedDataRef.current = { ...(lastSavedDataRef.current as Record<string, unknown>), ...catchUp } as T;
+              console.log(`[AutoSave] 補上先前暫存的遠端更新: ${pageKey}`);
+            }
+          }
           setTimeout(() => setSaveStatus('idle'), 2000);
           return;
         } catch (err) {
@@ -263,14 +296,25 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
         }
         // hasPendingWrites = true 表示是本機自己的寫入回傳，跳過
         if (snap.metadata.hasPendingWrites) return;
-        // 本機有未儲存的變更，優先保護本機資料，避免遠端資料覆蓋
-        if (isDirty.current) return;
         if (!snap.exists()) return;
 
         const remoteData = snap.data()[pageKey];
         if (!remoteData) return;
 
+        // 本機有未儲存的變更，優先保護本機資料；但不能就此丟棄遠端更新，
+        // 先暫存起來，等本機存檔完成後再補進來（見 syncToCloud）
+        if (isDirty.current) {
+          pendingRemoteRef.current = remoteData as Record<string, unknown>;
+          console.log(`[AutoSave] 本機編輯中，暫存遠端更新待稍後合併: ${pageKey}`);
+          return;
+        }
+
+        pendingRemoteRef.current = null;
         setData(prev => ({ ...prev, ...remoteData }));
+        // 遠端值即為雲端現況，同步更新基準值，下次存檔才不會把這些欄位當成本機變更再整包寫回
+        if (lastSavedDataRef.current) {
+          lastSavedDataRef.current = { ...(lastSavedDataRef.current as Record<string, unknown>), ...remoteData } as T;
+        }
         console.log(`[AutoSave] 接收遠端即時更新: ${pageKey}`);
       },
       (error) => {
@@ -330,10 +374,26 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
   };
 
   // 背景同步用：更新 state 但不標記為 dirty，避免觸發不必要的儲存
-  const syncData = (updates: Partial<T> | ((prev: T) => Partial<T>)) => {
+  // opts.markSaved：指定欄位已由呼叫端自行寫入雲端（例如 transaction），
+  // 同步更新存檔基準值，避免下次自動存檔又把整個欄位整包寫回覆蓋他人編輯
+  const syncData = (
+    updates: Partial<T> | ((prev: T) => Partial<T>),
+    opts?: { markSaved?: (keyof T & string)[] }
+  ) => {
     setData(prev => {
       const newUpdates = typeof updates === 'function' ? updates(prev) : updates;
-      return { ...prev, ...newUpdates };
+      const next = { ...prev, ...newUpdates };
+      const markSaved = opts?.markSaved;
+      if (markSaved && markSaved.length > 0 && lastSavedDataRef.current) {
+        const base = { ...(lastSavedDataRef.current as Record<string, unknown>) };
+        const nextRecord = next as Record<string, unknown>;
+        for (const k of markSaved) {
+          const v = nextRecord[k];
+          base[k] = v === undefined ? undefined : JSON.parse(JSON.stringify(v));
+        }
+        lastSavedDataRef.current = base as T;
+      }
+      return next;
     });
   };
 

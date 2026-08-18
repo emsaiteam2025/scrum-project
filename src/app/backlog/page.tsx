@@ -5,25 +5,17 @@ import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import SaveIndicator from '@/components/SaveIndicator';
 import { jDays } from '@/lib/journal';
+import type { Task, DevMember, Subtask, Attachment } from '@/lib/taskTypes';
+import { parseRoleNames } from '@/lib/taskTypes';
+import SubtaskList from '@/components/SubtaskList';
+import AttachmentBox from '@/components/AttachmentBox';
+import { useAuth } from '@/components/AuthProvider';
+import { updateTaskInSprint } from '@/lib/myTasks';
 import {
   Camera, Kanban, Target, BarChart2,
   ChevronUp, ChevronDown, Copy, Pencil, Trash2,
   Bot, Plus, Save, CheckCircle2, Layers, Palette, X,
 } from 'lucide-react';
-
-interface Task {
-  id: string;
-  type: 'pbi' | 'task';
-  status: 'pbi' | 'todo' | 'doing' | 'done' | 'accepted';
-  title: string;
-  desc?: string;
-  role?: string;
-  time?: string;
-  pbiId?: string;
-  acceptedBy?: string;
-  acceptedAt?: string;
-  color?: string;
-}
 
 const initialTasks: Task[] = [];
 
@@ -43,6 +35,20 @@ export default function Backlog() {
   const [holidays, setHolidays] = useState<{ id: string; date: string; name: string }[]>([]);
   const [mobileStatusFilter, setMobileStatusFilter] = useState<'all' | 'todo' | 'doing' | 'done'>('all');
   const [dateLabel, setDateLabel] = useState<string>('');
+  // sprintOwnerId 供子任務權限判斷使用（判斷誰是 Scrum Master／擁有者）
+  const [sprintOwnerId, setSprintOwnerId] = useState<string | undefined>(undefined);
+  const { user } = useAuth();
+  // 子任務與附件都需要 sprintId；不可在 JSX 內直接讀 localStorage（會造成 hydration 不一致）
+  const [currentSprintId, setCurrentSprintId] = useState('');
+  useEffect(() => { setCurrentSprintId(localStorage.getItem('currentSprintId') || ''); }, []);
+  // 公開連結的檢視者（未登入且帶 viewer_via_link 旗標）不得上傳／刪除附件或編輯子任務。
+  // 已登入且有編輯權的使用者，Navigation 會非同步清掉舊旗標，所以這裡用 !user 一起判斷。
+  // 必須在 effect 內讀 localStorage，避免 SSR/CSR hydration 不一致。
+  const [isViewOnly, setIsViewOnly] = useState(false);
+  useEffect(() => {
+    if (!currentSprintId) { setIsViewOnly(false); return; }
+    setIsViewOnly(!user && localStorage.getItem('sprintRole_' + currentSprintId) === 'viewer_via_link');
+  }, [user, currentSprintId]);
   useEffect(() => {
     setDateLabel(new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }));
   }, []);
@@ -55,7 +61,11 @@ export default function Backlog() {
     tasks: initialTasks,
     sprintGoal: '',
     stakeholders: '',
-    devsList: [] as string[]
+    devsList: [] as string[],
+    // devsList 是既有的純姓名陣列（UI 在用，型別不可動）；
+    // devMembers 是新增的姓名＋Email，供子任務綁定身分使用。
+    devMembers: [] as DevMember[],
+    planning: null as null | { po?: string; sm?: string; devsList?: { name: string; role?: string; email?: string }[] },
   });
 
   const sprintDays = data.sprintDays;
@@ -68,10 +78,16 @@ export default function Backlog() {
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const setSyncTasks = (valOrFn: Task[] | ((prev: Task[]) => Task[])) => {
-    syncData((prevData: {tasks: Task[]}) => ({
-      tasks: typeof valOrFn === 'function' ? valOrFn(prevData.tasks) : valOrFn
-    }));
+  const setSyncTasks = (
+    valOrFn: Task[] | ((prev: Task[]) => Task[]),
+    opts?: { markSaved?: boolean }
+  ) => {
+    syncData(
+      (prevData: {tasks: Task[]}) => ({
+        tasks: typeof valOrFn === 'function' ? valOrFn(prevData.tasks) : valOrFn
+      }),
+      opts?.markSaved ? { markSaved: ['tasks'] } : undefined
+    );
   };
 
   useEffect(() => {
@@ -101,6 +117,7 @@ export default function Backlog() {
         if (auth.currentUser || isPublicViewer) {
           const docRef = doc(db, 'sprints', sprintId);
           const snap = await getDoc(docRef);
+          if (snap.exists()) setSprintOwnerId(snap.data().ownerId);
           if (snap.exists() && snap.data().planning) {
             planningData = snap.data().planning;
           }
@@ -119,10 +136,31 @@ export default function Backlog() {
               localStorage.setItem('sprintDays', String(days));
             }
           }
-          if (planningData.devs) {
-            const devsArray = planningData.devs.split(/[,、，\n]/).map((d: string) => d.trim()).filter((d: string) => d);
+          if (planningData.devs || planningData.devsList) {
+            const structured: { name: string; role?: string; email?: string }[] = Array.isArray(planningData.devsList)
+              ? planningData.devsList
+              : [];
+            const fromStructured = structured
+              .map(d => ({ name: (d.name || '').trim(), email: (d.email || '').trim().toLowerCase() }))
+              .filter(d => d.name);
+            // 舊資料沒有 devsList，退回用逗號字串拆姓名（此時沒有 email 可綁）
+            const fromString = (planningData.devs || '')
+              .split(/[,、，\n]/)
+              .map((d: string) => d.trim())
+              .filter((d: string) => d)
+              .map((name: string) => ({ name, email: '' }));
+            const members: DevMember[] = fromStructured.length > 0 ? fromStructured : fromString;
+
             if (!isPublicViewer || auth.currentUser) {
-               syncData({ devsList: devsArray });
+              syncData({
+                devsList: members.map(m => m.name),
+                devMembers: members,
+                planning: {
+                  po: planningData.po || '',
+                  sm: planningData.sm || '',
+                  devsList: structured,
+                },
+              });
             }
           }
           if (planningData.whats) {
@@ -412,6 +450,123 @@ export default function Backlog() {
     setTasks((prev: Task[]) => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
   };
 
+  // 子任務／附件改走 transaction 逐張任務 patch（與 /my-tasks 相同的寫法），
+  // 避免自動存檔把整包 backlog.tasks 覆蓋回去、蓋掉別人剛寫入的子任務或附件。
+  // 本機 state 立即更新（setSyncTasks 不標記 dirty）；雲端寫入方面，
+  // 子任務因標題／工時是逐字觸發 onChange 而做 800ms 防抖，附件則立即寫出。
+  const taskPatchTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const pendingTaskPatch = useRef<Map<string, Partial<Task>>>(new Map());
+  const forceSaveRef = useRef(forceSave);
+  useEffect(() => { forceSaveRef.current = forceSave; }, [forceSave]);
+
+  const flushTaskPatch = async (taskId: string) => {
+    const patch = pendingTaskPatch.current.get(taskId);
+    if (!patch) return;
+    pendingTaskPatch.current.delete(taskId);
+    const sid = localStorage.getItem('currentSprintId') || currentSprintId;
+    if (!sid) return;
+    try {
+      // 先把待存的一般欄位（例如剛新增、尚未寫入雲端的任務）落地，
+      // 否則 transaction 在雲端找不到這張任務，patch 會靜默失效
+      await forceSaveRef.current();
+      await updateTaskInSprint(sid, taskId, patch, {
+        email: user?.email ?? null,
+        displayName: user?.displayName ?? null,
+      });
+      // 雲端已是最新，更新存檔基準值，避免下次自動存檔又整包寫回 tasks
+      setSyncTasks(prev => prev, { markSaved: true });
+    } catch (err) {
+      console.error('[Backlog] 子任務／附件寫入失敗，改由自動存檔重試:', err);
+      // 保底：改走原本的整包自動存檔路徑，至少不會遺失使用者的編輯
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...patch } : t));
+    }
+  };
+
+  // immediate=true 立刻寫出（附件的上傳／刪除是一次性事件，不該被防抖延後，
+  // 否則 800ms 內關閉分頁就會遺失，且已上傳的 blob 會變成孤兒檔）
+  const scheduleTaskPatch = (taskId: string, patch: Partial<Task>, immediate = false) => {
+    const merged = { ...(pendingTaskPatch.current.get(taskId) || {}), ...patch };
+    pendingTaskPatch.current.set(taskId, merged);
+    const timers = taskPatchTimers.current;
+    const existing = timers.get(taskId);
+    if (existing) clearTimeout(existing);
+    if (immediate) {
+      timers.delete(taskId);
+      flushTaskPatchRef.current(taskId);
+      return;
+    }
+    timers.set(taskId, setTimeout(() => {
+      timers.delete(taskId);
+      flushTaskPatchRef.current(taskId);
+    }, 800));
+  };
+
+  // 補送要用最新的 flushTaskPatch，否則會抓到首次 render 的過期閉包
+  const flushTaskPatchRef = useRef(flushTaskPatch);
+  flushTaskPatchRef.current = flushTaskPatch;
+
+  const flushAllTaskPatches = () => {
+    const timers = taskPatchTimers.current;
+    timers.forEach(t => clearTimeout(t));
+    timers.clear();
+    Array.from(pendingTaskPatch.current.keys()).forEach(id => { flushTaskPatchRef.current(id); });
+  };
+  const flushAllTaskPatchesRef = useRef(flushAllTaskPatches);
+  flushAllTaskPatchesRef.current = flushAllTaskPatches;
+
+  // 關閉分頁／切到背景／換頁時，把還在防抖中的子任務編輯補送出去，
+  // 避免最後 800ms 的輸入靜默遺失（子任務走 syncData 不會標記 dirty，
+  // 因此 useAutoSave 的草稿備份與 forceSave 都救不到這一段）
+  useEffect(() => {
+    const handleHide = () => {
+      if (document.visibilityState === 'hidden') flushAllTaskPatchesRef.current();
+    };
+    const handlePageHide = () => { flushAllTaskPatchesRef.current(); };
+    document.addEventListener('visibilitychange', handleHide);
+    window.addEventListener('pagehide', handlePageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', handleHide);
+      window.removeEventListener('pagehide', handlePageHide);
+      flushAllTaskPatchesRef.current();
+    };
+  }, []);
+
+  const patchTask = (taskId: string, patch: Partial<Task>, immediate = false) => {
+    if (isViewOnly) return;
+    // 未登入（純本機模式）沒有雲端可寫，維持原本的自動存檔路徑
+    if (!user) {
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...patch } : t));
+      return;
+    }
+    setSyncTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...patch } : t));
+    scheduleTaskPatch(taskId, patch, immediate);
+  };
+
+  // 子任務標題／工時是逐字觸發，需要防抖
+  const updateSubtasks = (taskId: string, next: Subtask[]) => {
+    patchTask(taskId, { subtasks: next });
+  };
+
+  // 附件的新增／刪除是一次性事件，立即寫出
+  const updateAttachments = (taskId: string, next: Attachment[]) => {
+    patchTask(taskId, { attachments: next }, true);
+  };
+
+  // 子任務全數完成時詢問是否把父任務標為完成。
+  // 使用者按取消後，同一張任務在本次瀏覽階段不再重複詢問。
+  const askedAllDoneRef = useRef<Set<string>>(new Set());
+  const handleAllSubtasksDone = (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task || task.status === 'done' || task.status === 'accepted') return;
+    if (askedAllDoneRef.current.has(taskId)) return;
+    askedAllDoneRef.current.add(taskId);
+    setTimeout(() => {
+      if (window.confirm('全部子任務已完成，要把這張任務標為完成嗎？')) {
+        updateTask(taskId, 'status', 'done');
+      }
+    }, 0);
+  };
+
   const copyTask = (id: string) => {
     setTasks((prev: Task[]) => {
       const index = prev.findIndex(t => t.id === id);
@@ -592,6 +747,32 @@ export default function Backlog() {
                   {task.time && <div className="text-xs text-[#8B887E]">{task.time}</div>}
                 </div>
               )}
+              {task.type === 'task' && (
+                <div onDragStart={e => e.stopPropagation()} draggable={false}>
+                  <SubtaskList
+                    subtasks={task.subtasks || []}
+                    roleNames={parseRoleNames(task.role)}
+                    devMembers={data.devMembers || []}
+                    sprint={{ ownerId: sprintOwnerId }}
+                    planning={data.planning}
+                    user={user}
+                    sprintId={currentSprintId}
+                    currentUserEmail={user?.email || ''}
+                    readOnly={isViewOnly}
+                    onChange={next => updateSubtasks(task.id, next)}
+                    onAllDone={() => handleAllSubtasksDone(task.id)}
+                  />
+                </div>
+              )}
+              <div onDragStart={e => e.stopPropagation()} draggable={false}>
+                <AttachmentBox
+                  attachments={task.attachments || []}
+                  sprintId={currentSprintId}
+                  uploadedBy={user?.email || ''}
+                  readOnly={isViewOnly}
+                  onChange={next => updateAttachments(task.id, next)}
+                />
+              </div>
             </>
           )}
         </div>
@@ -914,6 +1095,13 @@ export default function Backlog() {
                           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#F5E4DA] text-[#7A3520]">PBI</span>
                           <div className="font-semibold text-sm text-[#1F1D17] mt-1 break-words">{pbi.title || '(未命名)'}</div>
                           {pbi.desc && <div className="text-xs text-[#5A574E] mt-0.5 break-words">{pbi.desc}</div>}
+                          <AttachmentBox
+                            attachments={pbi.attachments || []}
+                            sprintId={currentSprintId}
+                            uploadedBy={user?.email || ''}
+                            readOnly={isViewOnly}
+                            onChange={next => updateAttachments(pbi.id, next)}
+                          />
                         </div>
                         <div className="flex gap-1 flex-shrink-0">
                           <button onClick={() => handleAiGenerateTasks(pbi.id, pbi.title)} disabled={isAiLoading}
@@ -990,22 +1178,44 @@ export default function Backlog() {
                               </div>
                             </div>
                           ) : (
-                            <div className="flex justify-between items-start gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="font-semibold text-sm text-[#1F1D17] break-words">{task.title}</div>
-                                {task.desc && <div className="text-xs text-[#5A574E] mt-0.5 break-words whitespace-pre-wrap">{task.desc}</div>}
-                                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${sC[task.status]}`}>{sL[task.status]}</span>
-                                  {task.role && <span className="text-[10px] text-[#5A574E] bg-[#F6F3EB] px-1.5 py-0.5 rounded">{task.role}</span>}
-                                  {task.time && <span className="text-[10px] text-[#8B887E]">{task.time}</span>}
+                            <>
+                              <div className="flex justify-between items-start gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold text-sm text-[#1F1D17] break-words">{task.title}</div>
+                                  {task.desc && <div className="text-xs text-[#5A574E] mt-0.5 break-words whitespace-pre-wrap">{task.desc}</div>}
+                                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${sC[task.status]}`}>{sL[task.status]}</span>
+                                    {task.role && <span className="text-[10px] text-[#5A574E] bg-[#F6F3EB] px-1.5 py-0.5 rounded">{task.role}</span>}
+                                    {task.time && <span className="text-[10px] text-[#8B887E]">{task.time}</span>}
+                                  </div>
+                                </div>
+                                <div className="flex gap-1 flex-shrink-0">
+                                  <button onClick={()=>copyTask(task.id)} className="text-[#8B887E] hover:text-[#4F7E5C] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="複製"><Copy size={13} strokeWidth={1.75} /></button>
+                                  <button onClick={()=>setEditingTaskId(task.id)} className="text-[#8B887E] hover:text-[#1F1D17] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="編輯"><Pencil size={13} strokeWidth={1.75} /></button>
+                                  <button onClick={()=>deleteTask(task.id)} className="text-[#8B887E] hover:text-[#B8543C] hover:bg-[#F0DDD3] p-1.5 rounded-md transition-all" title="刪除"><Trash2 size={13} strokeWidth={1.75} /></button>
                                 </div>
                               </div>
-                              <div className="flex gap-1 flex-shrink-0">
-                                <button onClick={()=>copyTask(task.id)} className="text-[#8B887E] hover:text-[#4F7E5C] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="複製"><Copy size={13} strokeWidth={1.75} /></button>
-                                <button onClick={()=>setEditingTaskId(task.id)} className="text-[#8B887E] hover:text-[#1F1D17] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="編輯"><Pencil size={13} strokeWidth={1.75} /></button>
-                                <button onClick={()=>deleteTask(task.id)} className="text-[#8B887E] hover:text-[#B8543C] hover:bg-[#F0DDD3] p-1.5 rounded-md transition-all" title="刪除"><Trash2 size={13} strokeWidth={1.75} /></button>
-                              </div>
-                            </div>
+                              <SubtaskList
+                                subtasks={task.subtasks || []}
+                                roleNames={parseRoleNames(task.role)}
+                                devMembers={data.devMembers || []}
+                                sprint={{ ownerId: sprintOwnerId }}
+                                planning={data.planning}
+                                user={user}
+                                sprintId={currentSprintId}
+                                currentUserEmail={user?.email || ''}
+                                readOnly={isViewOnly}
+                                onChange={next => updateSubtasks(task.id, next)}
+                                onAllDone={() => handleAllSubtasksDone(task.id)}
+                              />
+                              <AttachmentBox
+                                attachments={task.attachments || []}
+                                sprintId={currentSprintId}
+                                uploadedBy={user?.email || ''}
+                                readOnly={isViewOnly}
+                                onChange={next => updateAttachments(task.id, next)}
+                              />
+                            </>
                           )}
                         </div>
                       );
@@ -1076,22 +1286,44 @@ export default function Backlog() {
                               </div>
                             </div>
                           ) : (
-                            <div className="flex justify-between items-start gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="font-semibold text-sm text-[#1F1D17] break-words">{task.title}</div>
-                                {task.desc && <div className="text-xs text-[#5A574E] mt-0.5 break-words whitespace-pre-wrap">{task.desc}</div>}
-                                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${sC[task.status]}`}>{sL[task.status]}</span>
-                                  {task.role && <span className="text-[10px] text-[#5A574E] bg-[#F6F3EB] px-1.5 py-0.5 rounded">{task.role}</span>}
-                                  {task.time && <span className="text-[10px] text-[#8B887E]">{task.time}</span>}
+                            <>
+                              <div className="flex justify-between items-start gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold text-sm text-[#1F1D17] break-words">{task.title}</div>
+                                  {task.desc && <div className="text-xs text-[#5A574E] mt-0.5 break-words whitespace-pre-wrap">{task.desc}</div>}
+                                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${sC[task.status]}`}>{sL[task.status]}</span>
+                                    {task.role && <span className="text-[10px] text-[#5A574E] bg-[#F6F3EB] px-1.5 py-0.5 rounded">{task.role}</span>}
+                                    {task.time && <span className="text-[10px] text-[#8B887E]">{task.time}</span>}
+                                  </div>
+                                </div>
+                                <div className="flex gap-1 flex-shrink-0">
+                                  <button onClick={()=>copyTask(task.id)} className="text-[#8B887E] hover:text-[#4F7E5C] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="複製"><Copy size={13} strokeWidth={1.75} /></button>
+                                  <button onClick={()=>setEditingTaskId(task.id)} className="text-[#8B887E] hover:text-[#1F1D17] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="編輯"><Pencil size={13} strokeWidth={1.75} /></button>
+                                  <button onClick={()=>deleteTask(task.id)} className="text-[#8B887E] hover:text-[#B8543C] hover:bg-[#F0DDD3] p-1.5 rounded-md transition-all" title="刪除"><Trash2 size={13} strokeWidth={1.75} /></button>
                                 </div>
                               </div>
-                              <div className="flex gap-1 flex-shrink-0">
-                                <button onClick={()=>copyTask(task.id)} className="text-[#8B887E] hover:text-[#4F7E5C] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="複製"><Copy size={13} strokeWidth={1.75} /></button>
-                                <button onClick={()=>setEditingTaskId(task.id)} className="text-[#8B887E] hover:text-[#1F1D17] hover:bg-[#F1EEE6] p-1.5 rounded-md transition-all" title="編輯"><Pencil size={13} strokeWidth={1.75} /></button>
-                                <button onClick={()=>deleteTask(task.id)} className="text-[#8B887E] hover:text-[#B8543C] hover:bg-[#F0DDD3] p-1.5 rounded-md transition-all" title="刪除"><Trash2 size={13} strokeWidth={1.75} /></button>
-                              </div>
-                            </div>
+                              <SubtaskList
+                                subtasks={task.subtasks || []}
+                                roleNames={parseRoleNames(task.role)}
+                                devMembers={data.devMembers || []}
+                                sprint={{ ownerId: sprintOwnerId }}
+                                planning={data.planning}
+                                user={user}
+                                sprintId={currentSprintId}
+                                currentUserEmail={user?.email || ''}
+                                readOnly={isViewOnly}
+                                onChange={next => updateSubtasks(task.id, next)}
+                                onAllDone={() => handleAllSubtasksDone(task.id)}
+                              />
+                              <AttachmentBox
+                                attachments={task.attachments || []}
+                                sprintId={currentSprintId}
+                                uploadedBy={user?.email || ''}
+                                readOnly={isViewOnly}
+                                onChange={next => updateAttachments(task.id, next)}
+                              />
+                            </>
                           )}
                         </div>
                       );
@@ -1225,6 +1457,15 @@ export default function Backlog() {
                             <>
                               <h4 className="text-sm font-semibold text-[#1F1D17] mb-1 break-all">{task.title || '(未命名項目)'}</h4>
                               {task.desc && <p className="text-xs text-[#5A574E] line-clamp-3 mb-2 whitespace-pre-wrap break-words">{task.desc}</p>}
+                              <div onDragStart={e => e.stopPropagation()} draggable={false}>
+                                <AttachmentBox
+                                  attachments={task.attachments || []}
+                                  sprintId={currentSprintId}
+                                  uploadedBy={user?.email || ''}
+                                  readOnly={isViewOnly}
+                                  onChange={next => updateAttachments(task.id, next)}
+                                />
+                              </div>
                             </>
                           )}
                         </div>
