@@ -44,13 +44,6 @@ function generateChangeDiff(
 
 export type SaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error';
 
-// Firestore 的 dotted path 只在 updateDoc() 生效（setDoc 會把 'a.b' 當成含點號的欄位名），
-// 且欄位路徑不得含 ~ * / [ ] 或空片段。不合規時退回整包 setDoc(merge) 保底。
-const RESERVED_FIELD_CHARS = /[~*/[\]]/;
-function isSafeFieldSegment(seg: string): boolean {
-  return !!seg && !seg.includes('.') && !RESERVED_FIELD_CHARS.test(seg);
-}
-
 export function useAutoSave<T>(pageKey: string, initialData: T) {
   const searchParams = useSearchParams();
   const urlSprintIdParam = searchParams.get('sprint');
@@ -182,7 +175,7 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
     // 記錄儲存開始時的編輯世代，用來判斷儲存期間是否有新的用戶編輯
     const genAtStart = saveGeneration.current;
 
-    // 變更欄位在寫入前先算好：既用來決定要寫哪些 dotted path，也沿用給編輯歷史
+    // 變更欄位在寫入前先算好：既用來決定這次要寫哪些頂層欄位，也沿用給編輯歷史
     const prev = lastSavedDataRef.current as Record<string, unknown> | null;
     const curr = currentData as Record<string, unknown>;
     const changedKeys = prev
@@ -190,35 +183,23 @@ export function useAutoSave<T>(pageKey: string, initialData: T) {
       : Object.keys(curr).filter(k => { const v = curr[k]; return v !== '' && v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0); });
 
     if (currentUser) {
-      // 只有「已知上次存檔內容」且欄位名稱可安全組成 field path 時，才做逐欄位增量寫入。
-      // 否則（首次存檔／欄位名含保留字元）退回原本的整包 merge 寫入。
-      const canPatch =
-        !!prev &&
-        isSafeFieldSegment(pageKey) &&
-        changedKeys.every(isSafeFieldSegment);
+      // 只把「有變動的頂層欄位」放進 payload，其餘欄位（例如 backlog.tasks）完全不帶。
+      // 仍使用 setDoc(merge:true)：它會把 payload 併進雲端既有的 map，
+      // 沒帶到的欄位原封不動，而巢狀 map（daily.dailyNotes、leaveStatus 等）
+      // 也維持逐鍵深合併，不會被整個取代。
+      // prev 為 null（首次存檔，文件可能還不存在）時整包寫入以建立文件。
+      const pickChanged: Record<string, unknown> = {};
+      for (const k of changedKeys) pickChanged[k] = curr[k];
+      const payload = prev ? pickChanged : (currentData as unknown as Record<string, unknown>);
+      const shouldWrite = !prev || changedKeys.length > 0;
 
       let lastErr: unknown;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt));
           const docRef = doc(db, 'sprints', sid);
-          if (!canPatch) {
-            await setDoc(docRef, { [pageKey]: currentData }, { merge: true });
-          } else if (changedKeys.length > 0) {
-            // 只寫有變動的頂層欄位，其他欄位（例如 backlog.tasks）完全不碰，
-            // 避免蓋掉 /my-tasks 以 transaction 寫入的子任務／附件
-            const patch: Record<string, unknown> = {};
-            for (const k of changedKeys) patch[`${pageKey}.${k}`] = curr[k];
-            try {
-              await updateDoc(docRef, patch);
-            } catch (e) {
-              // updateDoc 對「文件不存在」會直接失敗，此時退回 setDoc 建立文件
-              if ((e as { code?: string })?.code === 'not-found') {
-                await setDoc(docRef, { [pageKey]: currentData }, { merge: true });
-              } else {
-                throw e;
-              }
-            }
+          if (shouldWrite) {
+            await setDoc(docRef, { [pageKey]: payload }, { merge: true });
           }
           localStorage.removeItem(`draft_sprint_${sid}_${pageKey}`);
           // 只有在儲存期間沒有新的用戶編輯時，才重置 isDirty

@@ -452,8 +452,8 @@ export default function Backlog() {
 
   // 子任務／附件改走 transaction 逐張任務 patch（與 /my-tasks 相同的寫法），
   // 避免自動存檔把整包 backlog.tasks 覆蓋回去、蓋掉別人剛寫入的子任務或附件。
-  // 本機 state 立即更新（setSyncTasks 不標記 dirty），雲端寫入則做 800ms 防抖，
-  // 因為子任務標題／工時是逐字觸發 onChange 的。
+  // 本機 state 立即更新（setSyncTasks 不標記 dirty）；雲端寫入方面，
+  // 子任務因標題／工時是逐字觸發 onChange 而做 800ms 防抖，附件則立即寫出。
   const taskPatchTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const pendingTaskPatch = useRef<Map<string, Partial<Task>>>(new Map());
   const forceSaveRef = useRef(forceSave);
@@ -482,34 +482,56 @@ export default function Backlog() {
     }
   };
 
-  const scheduleTaskPatch = (taskId: string, patch: Partial<Task>) => {
+  // immediate=true 立刻寫出（附件的上傳／刪除是一次性事件，不該被防抖延後，
+  // 否則 800ms 內關閉分頁就會遺失，且已上傳的 blob 會變成孤兒檔）
+  const scheduleTaskPatch = (taskId: string, patch: Partial<Task>, immediate = false) => {
     const merged = { ...(pendingTaskPatch.current.get(taskId) || {}), ...patch };
     pendingTaskPatch.current.set(taskId, merged);
     const timers = taskPatchTimers.current;
     const existing = timers.get(taskId);
     if (existing) clearTimeout(existing);
+    if (immediate) {
+      timers.delete(taskId);
+      flushTaskPatchRef.current(taskId);
+      return;
+    }
     timers.set(taskId, setTimeout(() => {
       timers.delete(taskId);
       flushTaskPatchRef.current(taskId);
     }, 800));
   };
 
-  // 卸載時的補送要用最新的 flushTaskPatch，否則會抓到首次 render 的過期閉包
+  // 補送要用最新的 flushTaskPatch，否則會抓到首次 render 的過期閉包
   const flushTaskPatchRef = useRef(flushTaskPatch);
   flushTaskPatchRef.current = flushTaskPatch;
 
-  // 換頁／卸載時把還沒寫出去的 patch 補送，避免防抖期間離開造成遺失
-  useEffect(() => {
+  const flushAllTaskPatches = () => {
     const timers = taskPatchTimers.current;
-    const pending = pendingTaskPatch.current;
+    timers.forEach(t => clearTimeout(t));
+    timers.clear();
+    Array.from(pendingTaskPatch.current.keys()).forEach(id => { flushTaskPatchRef.current(id); });
+  };
+  const flushAllTaskPatchesRef = useRef(flushAllTaskPatches);
+  flushAllTaskPatchesRef.current = flushAllTaskPatches;
+
+  // 關閉分頁／切到背景／換頁時，把還在防抖中的子任務編輯補送出去，
+  // 避免最後 800ms 的輸入靜默遺失（子任務走 syncData 不會標記 dirty，
+  // 因此 useAutoSave 的草稿備份與 forceSave 都救不到這一段）
+  useEffect(() => {
+    const handleHide = () => {
+      if (document.visibilityState === 'hidden') flushAllTaskPatchesRef.current();
+    };
+    const handlePageHide = () => { flushAllTaskPatchesRef.current(); };
+    document.addEventListener('visibilitychange', handleHide);
+    window.addEventListener('pagehide', handlePageHide);
     return () => {
-      timers.forEach(t => clearTimeout(t));
-      timers.clear();
-      Array.from(pending.keys()).forEach(id => { flushTaskPatchRef.current(id); });
+      document.removeEventListener('visibilitychange', handleHide);
+      window.removeEventListener('pagehide', handlePageHide);
+      flushAllTaskPatchesRef.current();
     };
   }, []);
 
-  const patchTask = (taskId: string, patch: Partial<Task>) => {
+  const patchTask = (taskId: string, patch: Partial<Task>, immediate = false) => {
     if (isViewOnly) return;
     // 未登入（純本機模式）沒有雲端可寫，維持原本的自動存檔路徑
     if (!user) {
@@ -517,15 +539,17 @@ export default function Backlog() {
       return;
     }
     setSyncTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...patch } : t));
-    scheduleTaskPatch(taskId, patch);
+    scheduleTaskPatch(taskId, patch, immediate);
   };
 
+  // 子任務標題／工時是逐字觸發，需要防抖
   const updateSubtasks = (taskId: string, next: Subtask[]) => {
     patchTask(taskId, { subtasks: next });
   };
 
+  // 附件的新增／刪除是一次性事件，立即寫出
   const updateAttachments = (taskId: string, next: Attachment[]) => {
-    patchTask(taskId, { attachments: next });
+    patchTask(taskId, { attachments: next }, true);
   };
 
   // 子任務全數完成時詢問是否把父任務標為完成。
