@@ -5,7 +5,7 @@ import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import SaveIndicator from '@/components/SaveIndicator';
 import { jDays } from '@/lib/journal';
-import type { Task } from '@/lib/taskTypes';
+import type { Task, DevMember } from '@/lib/taskTypes';
 import {
   Camera, Kanban, Target, BarChart2,
   ChevronUp, ChevronDown, Copy, Pencil, Trash2,
@@ -30,6 +30,9 @@ export default function Backlog() {
   const [holidays, setHolidays] = useState<{ id: string; date: string; name: string }[]>([]);
   const [mobileStatusFilter, setMobileStatusFilter] = useState<'all' | 'todo' | 'doing' | 'done'>('all');
   const [dateLabel, setDateLabel] = useState<string>('');
+  // sprintOwnerId 供後續任務（子任務權限判斷）使用，此任務僅負責載入
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [sprintOwnerId, setSprintOwnerId] = useState<string | undefined>(undefined);
   useEffect(() => {
     setDateLabel(new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }));
   }, []);
@@ -42,7 +45,11 @@ export default function Backlog() {
     tasks: initialTasks,
     sprintGoal: '',
     stakeholders: '',
-    devsList: [] as string[]
+    devsList: [] as string[],
+    // devsList 是既有的純姓名陣列（UI 在用，型別不可動）；
+    // devMembers 是新增的姓名＋Email，供子任務綁定身分使用。
+    devMembers: [] as DevMember[],
+    planning: null as null | { po?: string; sm?: string; devsList?: { name: string; role?: string; email?: string }[] },
   });
 
   const sprintDays = data.sprintDays;
@@ -88,6 +95,7 @@ export default function Backlog() {
         if (auth.currentUser || isPublicViewer) {
           const docRef = doc(db, 'sprints', sprintId);
           const snap = await getDoc(docRef);
+          if (snap.exists()) setSprintOwnerId(snap.data().ownerId);
           if (snap.exists() && snap.data().planning) {
             planningData = snap.data().planning;
           }
@@ -106,10 +114,31 @@ export default function Backlog() {
               localStorage.setItem('sprintDays', String(days));
             }
           }
-          if (planningData.devs) {
-            const devsArray = planningData.devs.split(/[,、，\n]/).map((d: string) => d.trim()).filter((d: string) => d);
+          if (planningData.devs || planningData.devsList) {
+            const structured: { name: string; role?: string; email?: string }[] = Array.isArray(planningData.devsList)
+              ? planningData.devsList
+              : [];
+            const fromStructured = structured
+              .map(d => ({ name: (d.name || '').trim(), email: (d.email || '').trim().toLowerCase() }))
+              .filter(d => d.name);
+            // 舊資料沒有 devsList，退回用逗號字串拆姓名（此時沒有 email 可綁）
+            const fromString = (planningData.devs || '')
+              .split(/[,、，\n]/)
+              .map((d: string) => d.trim())
+              .filter((d: string) => d)
+              .map((name: string) => ({ name, email: '' }));
+            const members: DevMember[] = fromStructured.length > 0 ? fromStructured : fromString;
+
             if (!isPublicViewer || auth.currentUser) {
-               syncData({ devsList: devsArray });
+              syncData({
+                devsList: members.map(m => m.name),
+                devMembers: members,
+                planning: {
+                  po: planningData.po || '',
+                  sm: planningData.sm || '',
+                  devsList: structured,
+                },
+              });
             }
           }
           if (planningData.whats) {
