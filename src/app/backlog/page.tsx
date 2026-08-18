@@ -5,25 +5,12 @@ import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import SaveIndicator from '@/components/SaveIndicator';
 import { jDays } from '@/lib/journal';
+import type { Task } from '@/lib/taskTypes';
 import {
   Camera, Kanban, Target, BarChart2,
   ChevronUp, ChevronDown, Copy, Pencil, Trash2,
   Bot, Plus, Save, CheckCircle2, Layers, Palette, X,
 } from 'lucide-react';
-
-interface Task {
-  id: string;
-  type: 'pbi' | 'task';
-  status: 'pbi' | 'todo' | 'doing' | 'done' | 'accepted';
-  title: string;
-  desc?: string;
-  role?: string;
-  time?: string;
-  pbiId?: string;
-  acceptedBy?: string;
-  acceptedAt?: string;
-  color?: string;
-}
 
 const initialTasks: Task[] = [];
 
