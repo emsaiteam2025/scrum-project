@@ -1,5 +1,5 @@
 "use client";
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Paperclip, X, Loader2 } from 'lucide-react';
 import type { Attachment } from '@/lib/taskTypes';
 import { auth } from '@/lib/firebase';
@@ -36,6 +36,39 @@ export default function AttachmentBox({
   const list = attachments || [];
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+
+  // private store 的檔案必須帶著 token 去 /api/blob 取，取回後轉成 object URL 才能
+  // 餵給 <img src> / <a href>——瀏覽器不會在這兩個標籤上帶 Authorization header。
+  const [objUrls, setObjUrls] = useState<Record<string, string>>({});
+  const objUrlsRef = useRef<Record<string, string>>({});
+  objUrlsRef.current = objUrls;
+
+  const pathKey = list.map(a => a.pathname).join('|');
+  useEffect(() => {
+    let cancelled = false;
+    const created: string[] = [];
+
+    (async () => {
+      const header = await authHeader();
+      if (!header.Authorization) return; // 未登入就不試著取，交由畫面顯示檔名即可
+      for (const att of list) {
+        if (!att.pathname || objUrlsRef.current[att.pathname]) continue;
+        try {
+          const res = await fetch(`/api/blob?p=${encodeURIComponent(att.pathname)}`, { headers: header });
+          if (!res.ok) continue;
+          const objUrl = URL.createObjectURL(await res.blob());
+          created.push(objUrl);
+          if (cancelled) { URL.revokeObjectURL(objUrl); return; }
+          setObjUrls(prev => ({ ...prev, [att.pathname]: objUrl }));
+        } catch {
+          /* 取不到就只顯示檔名，不擋畫面 */
+        }
+      }
+    })();
+
+    return () => { cancelled = true; created.forEach(URL.revokeObjectURL); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathKey]);
 
   const upload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -75,7 +108,7 @@ export default function AttachmentBox({
       await fetch('/api/upload', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
-        body: JSON.stringify({ url: att.url }),
+        body: JSON.stringify({ pathname: att.pathname }),
       });
     } catch {}
   };
@@ -114,21 +147,29 @@ export default function AttachmentBox({
               key={att.id}
               className="group/att relative flex items-center gap-1 bg-[#F6F3EB] border border-[#E9E5DA] rounded-md px-1.5 py-1"
             >
-              {isImage(att.contentType) ? (
+              {isImage(att.contentType) && objUrls[att.pathname] ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={att.url} alt={att.name} className="w-8 h-8 object-cover rounded" />
+                <img src={objUrls[att.pathname]} alt={att.name} className="w-8 h-8 object-cover rounded" />
               ) : (
                 <Paperclip size={11} strokeWidth={1.75} className="text-[#8B887E]" />
               )}
-              <a
-                href={att.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[10px] text-[#5A574E] hover:text-[#C96442] max-w-[110px] truncate"
-                title={`${att.name}（${fmtSize(att.size)}）`}
-              >
-                {att.name}
-              </a>
+              {objUrls[att.pathname] ? (
+                <a
+                  href={objUrls[att.pathname]}
+                  download={att.name}
+                  className="text-[10px] text-[#5A574E] hover:text-[#C96442] max-w-[110px] truncate"
+                  title={`${att.name}（${fmtSize(att.size)}）`}
+                >
+                  {att.name}
+                </a>
+              ) : (
+                <span
+                  className="text-[10px] text-[#8B887E] max-w-[110px] truncate"
+                  title={`${att.name}（${fmtSize(att.size)}）載入中`}
+                >
+                  {att.name}
+                </span>
+              )}
               {!readOnly && (
                 <button
                   type="button"
@@ -146,7 +187,7 @@ export default function AttachmentBox({
 
       {!compact && !readOnly && (
         <div className="text-[10px] text-[#B5B2A6] mt-1">
-          單檔上限 10 MB。附件連結為公開網址（不可猜測但無需登入即可開啟），請勿上傳機密資料。
+          單檔上限 10 MB。檔案存放於私有儲存，必須登入才能檢視或下載。
         </div>
       )}
     </div>

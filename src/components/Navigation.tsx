@@ -138,7 +138,7 @@ export default function Navigation() {
             <ListChecks size={15} strokeWidth={1.75} />
             我的工作
           </Link>
-          <span className="text-[10px] font-mono text-[#B5B2A6] ml-1">v1.0.250</span>
+          <span className="text-[10px] font-mono text-[#B5B2A6] ml-1">v1.0.252</span>
         </div>
 
         {currentSprintName && (

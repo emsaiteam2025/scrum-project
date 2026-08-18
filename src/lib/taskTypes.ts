@@ -6,7 +6,10 @@
 export interface Attachment {
   id: string;
   name: string;
-  url: string;            // Vercel Blob URL
+  url: string;            // Vercel Blob 原始 URL（private store 無法直接開啟，僅供除錯／稽核）
+  // Blob 在 store 內的路徑。private store 的檔案必須透過 /api/blob 代理讀取，
+  // 這個欄位就是代理與刪除時的識別依據（不要改用 url 反推）。
+  pathname: string;
   size: number;           // bytes
   contentType: string;
   uploadedBy: string;     // email

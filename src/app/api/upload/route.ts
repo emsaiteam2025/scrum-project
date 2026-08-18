@@ -59,7 +59,7 @@ export async function POST(req: Request) {
   try {
     const safeName = file.name.replace(/[^\w.\-一-龥]/g, '_');
     const blob = await put(`scrum/${sprintId}/${safeName}`, file, {
-      access: 'public',
+      access: 'private',
       addRandomSuffix: true,
     });
 
@@ -67,6 +67,7 @@ export async function POST(req: Request) {
       id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: file.name,
       url: blob.url,
+      pathname: blob.pathname,
       size: file.size,
       contentType: file.type,
       uploadedBy,
@@ -94,13 +95,14 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: '無法解析刪除請求內容。' }, { status: 400 });
   }
 
-  const url = (body as { url?: unknown } | null)?.url;
-  if (!url || typeof url !== 'string') {
-    return NextResponse.json({ error: '缺少要刪除的檔案網址。' }, { status: 400 });
+  // private store 一律用 pathname 識別（url 對外不可直接存取，也不該當識別碼）
+  const pathname = (body as { pathname?: unknown } | null)?.pathname;
+  if (!pathname || typeof pathname !== 'string') {
+    return NextResponse.json({ error: '缺少要刪除的檔案路徑。' }, { status: 400 });
   }
 
   try {
-    await del(url);
+    await del(pathname);
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error('[upload] 刪除失敗', err);
