@@ -3,6 +3,7 @@ import React from 'react';
 import { Plus, Trash2, Split } from 'lucide-react';
 import type { Subtask, DevMember } from '@/lib/taskTypes';
 import { canEditSubtask, type PlanningLike, type SprintLike, type UserLike } from '@/lib/permissions';
+import AttachmentBox from '@/components/AttachmentBox';
 
 export interface SubtaskListProps {
   subtasks: Subtask[];
@@ -36,8 +37,6 @@ const STATUS_STYLE: Record<Subtask['status'], string> = {
 
 export default function SubtaskList({
   subtasks, roleNames, devMembers, sprint, planning, user,
-  // sprintId / currentUserEmail 供 Task 8 接上 AttachmentBox 使用，此任務僅先定義 props
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   sprintId, currentUserEmail, onChange, readOnly, onAllDone,
 }: SubtaskListProps) {
   const list = subtasks || [];
@@ -199,6 +198,18 @@ export default function SubtaskList({
                 onChange={e => patchText(sub.id, 'title', e.target.value)}
                 placeholder="這位負責人負責的內容"
                 className="w-full text-xs px-1.5 py-1 rounded border border-[#E9E5DA] text-[#1F1D17] placeholder-[#B5B2A6] disabled:border-transparent disabled:bg-transparent"
+              />
+              <AttachmentBox
+                attachments={sub.attachments || []}
+                sprintId={sprintId}
+                uploadedBy={currentUserEmail}
+                readOnly={!editable}
+                compact
+                onChange={next => {
+                  onChange(list.map(s => s.id === sub.id
+                    ? { ...s, attachments: next, updatedAt: Date.now() }
+                    : s));
+                }}
               />
               {!editable && (
                 <div className="text-[10px] text-[#8B887E] mt-1">

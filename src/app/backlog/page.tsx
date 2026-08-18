@@ -5,9 +5,10 @@ import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import SaveIndicator from '@/components/SaveIndicator';
 import { jDays } from '@/lib/journal';
-import type { Task, DevMember, Subtask } from '@/lib/taskTypes';
+import type { Task, DevMember, Subtask, Attachment } from '@/lib/taskTypes';
 import { parseRoleNames } from '@/lib/taskTypes';
 import SubtaskList from '@/components/SubtaskList';
+import AttachmentBox from '@/components/AttachmentBox';
 import { useAuth } from '@/components/AuthProvider';
 import {
   Camera, Kanban, Target, BarChart2,
@@ -438,6 +439,10 @@ export default function Backlog() {
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, subtasks: next } : t));
   };
 
+  const updateAttachments = (taskId: string, next: Attachment[]) => {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, attachments: next } : t));
+  };
+
   // 子任務全數完成時詢問是否把父任務標為完成。
   // 使用者按取消後，同一張任務在本次瀏覽階段不再重複詢問。
   const askedAllDoneRef = useRef<Set<string>>(new Set());
@@ -649,6 +654,14 @@ export default function Backlog() {
                   />
                 </div>
               )}
+              <div onDragStart={e => e.stopPropagation()} draggable={false}>
+                <AttachmentBox
+                  attachments={task.attachments || []}
+                  sprintId={currentSprintId}
+                  uploadedBy={user?.email || ''}
+                  onChange={next => updateAttachments(task.id, next)}
+                />
+              </div>
             </>
           )}
         </div>
@@ -971,6 +984,12 @@ export default function Backlog() {
                           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#F5E4DA] text-[#7A3520]">PBI</span>
                           <div className="font-semibold text-sm text-[#1F1D17] mt-1 break-words">{pbi.title || '(未命名)'}</div>
                           {pbi.desc && <div className="text-xs text-[#5A574E] mt-0.5 break-words">{pbi.desc}</div>}
+                          <AttachmentBox
+                            attachments={pbi.attachments || []}
+                            sprintId={currentSprintId}
+                            uploadedBy={user?.email || ''}
+                            onChange={next => updateAttachments(pbi.id, next)}
+                          />
                         </div>
                         <div className="flex gap-1 flex-shrink-0">
                           <button onClick={() => handleAiGenerateTasks(pbi.id, pbi.title)} disabled={isAiLoading}
@@ -1076,6 +1095,12 @@ export default function Backlog() {
                                 onChange={next => updateSubtasks(task.id, next)}
                                 onAllDone={() => handleAllSubtasksDone(task.id)}
                               />
+                              <AttachmentBox
+                                attachments={task.attachments || []}
+                                sprintId={currentSprintId}
+                                uploadedBy={user?.email || ''}
+                                onChange={next => updateAttachments(task.id, next)}
+                              />
                             </>
                           )}
                         </div>
@@ -1175,6 +1200,12 @@ export default function Backlog() {
                                 currentUserEmail={user?.email || ''}
                                 onChange={next => updateSubtasks(task.id, next)}
                                 onAllDone={() => handleAllSubtasksDone(task.id)}
+                              />
+                              <AttachmentBox
+                                attachments={task.attachments || []}
+                                sprintId={currentSprintId}
+                                uploadedBy={user?.email || ''}
+                                onChange={next => updateAttachments(task.id, next)}
                               />
                             </>
                           )}
@@ -1310,6 +1341,14 @@ export default function Backlog() {
                             <>
                               <h4 className="text-sm font-semibold text-[#1F1D17] mb-1 break-all">{task.title || '(未命名項目)'}</h4>
                               {task.desc && <p className="text-xs text-[#5A574E] line-clamp-3 mb-2 whitespace-pre-wrap break-words">{task.desc}</p>}
+                              <div onDragStart={e => e.stopPropagation()} draggable={false}>
+                                <AttachmentBox
+                                  attachments={task.attachments || []}
+                                  sprintId={currentSprintId}
+                                  uploadedBy={user?.email || ''}
+                                  onChange={next => updateAttachments(task.id, next)}
+                                />
+                              </div>
                             </>
                           )}
                         </div>
