@@ -10,6 +10,7 @@ import { parseRoleNames } from '@/lib/taskTypes';
 import SubtaskList from '@/components/SubtaskList';
 import AttachmentBox from '@/components/AttachmentBox';
 import { useAuth } from '@/components/AuthProvider';
+import { updateTaskInSprint } from '@/lib/myTasks';
 import {
   Camera, Kanban, Target, BarChart2,
   ChevronUp, ChevronDown, Copy, Pencil, Trash2,
@@ -40,6 +41,14 @@ export default function Backlog() {
   // 子任務與附件都需要 sprintId；不可在 JSX 內直接讀 localStorage（會造成 hydration 不一致）
   const [currentSprintId, setCurrentSprintId] = useState('');
   useEffect(() => { setCurrentSprintId(localStorage.getItem('currentSprintId') || ''); }, []);
+  // 公開連結的檢視者（未登入且帶 viewer_via_link 旗標）不得上傳／刪除附件或編輯子任務。
+  // 已登入且有編輯權的使用者，Navigation 會非同步清掉舊旗標，所以這裡用 !user 一起判斷。
+  // 必須在 effect 內讀 localStorage，避免 SSR/CSR hydration 不一致。
+  const [isViewOnly, setIsViewOnly] = useState(false);
+  useEffect(() => {
+    if (!currentSprintId) { setIsViewOnly(false); return; }
+    setIsViewOnly(!user && localStorage.getItem('sprintRole_' + currentSprintId) === 'viewer_via_link');
+  }, [user, currentSprintId]);
   useEffect(() => {
     setDateLabel(new Date().toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }));
   }, []);
@@ -69,10 +78,16 @@ export default function Backlog() {
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const setSyncTasks = (valOrFn: Task[] | ((prev: Task[]) => Task[])) => {
-    syncData((prevData: {tasks: Task[]}) => ({
-      tasks: typeof valOrFn === 'function' ? valOrFn(prevData.tasks) : valOrFn
-    }));
+  const setSyncTasks = (
+    valOrFn: Task[] | ((prev: Task[]) => Task[]),
+    opts?: { markSaved?: boolean }
+  ) => {
+    syncData(
+      (prevData: {tasks: Task[]}) => ({
+        tasks: typeof valOrFn === 'function' ? valOrFn(prevData.tasks) : valOrFn
+      }),
+      opts?.markSaved ? { markSaved: ['tasks'] } : undefined
+    );
   };
 
   useEffect(() => {
@@ -435,12 +450,82 @@ export default function Backlog() {
     setTasks((prev: Task[]) => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
   };
 
+  // 子任務／附件改走 transaction 逐張任務 patch（與 /my-tasks 相同的寫法），
+  // 避免自動存檔把整包 backlog.tasks 覆蓋回去、蓋掉別人剛寫入的子任務或附件。
+  // 本機 state 立即更新（setSyncTasks 不標記 dirty），雲端寫入則做 800ms 防抖，
+  // 因為子任務標題／工時是逐字觸發 onChange 的。
+  const taskPatchTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const pendingTaskPatch = useRef<Map<string, Partial<Task>>>(new Map());
+  const forceSaveRef = useRef(forceSave);
+  useEffect(() => { forceSaveRef.current = forceSave; }, [forceSave]);
+
+  const flushTaskPatch = async (taskId: string) => {
+    const patch = pendingTaskPatch.current.get(taskId);
+    if (!patch) return;
+    pendingTaskPatch.current.delete(taskId);
+    const sid = localStorage.getItem('currentSprintId') || currentSprintId;
+    if (!sid) return;
+    try {
+      // 先把待存的一般欄位（例如剛新增、尚未寫入雲端的任務）落地，
+      // 否則 transaction 在雲端找不到這張任務，patch 會靜默失效
+      await forceSaveRef.current();
+      await updateTaskInSprint(sid, taskId, patch, {
+        email: user?.email ?? null,
+        displayName: user?.displayName ?? null,
+      });
+      // 雲端已是最新，更新存檔基準值，避免下次自動存檔又整包寫回 tasks
+      setSyncTasks(prev => prev, { markSaved: true });
+    } catch (err) {
+      console.error('[Backlog] 子任務／附件寫入失敗，改由自動存檔重試:', err);
+      // 保底：改走原本的整包自動存檔路徑，至少不會遺失使用者的編輯
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...patch } : t));
+    }
+  };
+
+  const scheduleTaskPatch = (taskId: string, patch: Partial<Task>) => {
+    const merged = { ...(pendingTaskPatch.current.get(taskId) || {}), ...patch };
+    pendingTaskPatch.current.set(taskId, merged);
+    const timers = taskPatchTimers.current;
+    const existing = timers.get(taskId);
+    if (existing) clearTimeout(existing);
+    timers.set(taskId, setTimeout(() => {
+      timers.delete(taskId);
+      flushTaskPatchRef.current(taskId);
+    }, 800));
+  };
+
+  // 卸載時的補送要用最新的 flushTaskPatch，否則會抓到首次 render 的過期閉包
+  const flushTaskPatchRef = useRef(flushTaskPatch);
+  flushTaskPatchRef.current = flushTaskPatch;
+
+  // 換頁／卸載時把還沒寫出去的 patch 補送，避免防抖期間離開造成遺失
+  useEffect(() => {
+    const timers = taskPatchTimers.current;
+    const pending = pendingTaskPatch.current;
+    return () => {
+      timers.forEach(t => clearTimeout(t));
+      timers.clear();
+      Array.from(pending.keys()).forEach(id => { flushTaskPatchRef.current(id); });
+    };
+  }, []);
+
+  const patchTask = (taskId: string, patch: Partial<Task>) => {
+    if (isViewOnly) return;
+    // 未登入（純本機模式）沒有雲端可寫，維持原本的自動存檔路徑
+    if (!user) {
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...patch } : t));
+      return;
+    }
+    setSyncTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...patch } : t));
+    scheduleTaskPatch(taskId, patch);
+  };
+
   const updateSubtasks = (taskId: string, next: Subtask[]) => {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, subtasks: next } : t));
+    patchTask(taskId, { subtasks: next });
   };
 
   const updateAttachments = (taskId: string, next: Attachment[]) => {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, attachments: next } : t));
+    patchTask(taskId, { attachments: next });
   };
 
   // 子任務全數完成時詢問是否把父任務標為完成。
@@ -649,6 +734,7 @@ export default function Backlog() {
                     user={user}
                     sprintId={currentSprintId}
                     currentUserEmail={user?.email || ''}
+                    readOnly={isViewOnly}
                     onChange={next => updateSubtasks(task.id, next)}
                     onAllDone={() => handleAllSubtasksDone(task.id)}
                   />
@@ -659,6 +745,7 @@ export default function Backlog() {
                   attachments={task.attachments || []}
                   sprintId={currentSprintId}
                   uploadedBy={user?.email || ''}
+                  readOnly={isViewOnly}
                   onChange={next => updateAttachments(task.id, next)}
                 />
               </div>
@@ -988,6 +1075,7 @@ export default function Backlog() {
                             attachments={pbi.attachments || []}
                             sprintId={currentSprintId}
                             uploadedBy={user?.email || ''}
+                            readOnly={isViewOnly}
                             onChange={next => updateAttachments(pbi.id, next)}
                           />
                         </div>
@@ -1092,6 +1180,7 @@ export default function Backlog() {
                                 user={user}
                                 sprintId={currentSprintId}
                                 currentUserEmail={user?.email || ''}
+                                readOnly={isViewOnly}
                                 onChange={next => updateSubtasks(task.id, next)}
                                 onAllDone={() => handleAllSubtasksDone(task.id)}
                               />
@@ -1099,6 +1188,7 @@ export default function Backlog() {
                                 attachments={task.attachments || []}
                                 sprintId={currentSprintId}
                                 uploadedBy={user?.email || ''}
+                                readOnly={isViewOnly}
                                 onChange={next => updateAttachments(task.id, next)}
                               />
                             </>
@@ -1198,6 +1288,7 @@ export default function Backlog() {
                                 user={user}
                                 sprintId={currentSprintId}
                                 currentUserEmail={user?.email || ''}
+                                readOnly={isViewOnly}
                                 onChange={next => updateSubtasks(task.id, next)}
                                 onAllDone={() => handleAllSubtasksDone(task.id)}
                               />
@@ -1205,6 +1296,7 @@ export default function Backlog() {
                                 attachments={task.attachments || []}
                                 sprintId={currentSprintId}
                                 uploadedBy={user?.email || ''}
+                                readOnly={isViewOnly}
                                 onChange={next => updateAttachments(task.id, next)}
                               />
                             </>
@@ -1346,6 +1438,7 @@ export default function Backlog() {
                                   attachments={task.attachments || []}
                                   sprintId={currentSprintId}
                                   uploadedBy={user?.email || ''}
+                                  readOnly={isViewOnly}
                                   onChange={next => updateAttachments(task.id, next)}
                                 />
                               </div>
