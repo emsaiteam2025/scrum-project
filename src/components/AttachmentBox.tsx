@@ -2,6 +2,18 @@
 import React, { useRef, useState } from 'react';
 import { Paperclip, X, Loader2 } from 'lucide-react';
 import type { Attachment } from '@/lib/taskTypes';
+import { auth } from '@/lib/firebase';
+
+// /api/upload 需要 Firebase ID Token 才會受理。取不到就讓請求帶空 header，
+// 由伺服器統一回 401，前端不必自己判斷登入狀態。
+async function authHeader(): Promise<Record<string, string>> {
+  try {
+    const token = await auth.currentUser?.getIdToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
 
 export interface AttachmentBoxProps {
   attachments: Attachment[];
@@ -35,7 +47,11 @@ export default function AttachmentBox({
       form.append('sprintId', sprintId || 'unknown');
       form.append('uploadedBy', uploadedBy || '');
       try {
-        const res = await fetch('/api/upload', { method: 'POST', body: form });
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: await authHeader(),
+          body: form,
+        });
         const json = await res.json();
         if (!res.ok) {
           alert(json.error || '上傳失敗');
@@ -58,7 +74,7 @@ export default function AttachmentBox({
     try {
       await fetch('/api/upload', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
         body: JSON.stringify({ url: att.url }),
       });
     } catch {}

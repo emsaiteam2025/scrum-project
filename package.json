@@ -1,6 +1,6 @@
 {
   "name": "scrum-project",
-  "version": "1.0.250",
+  "version": "1.0.251",
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3033",
@@ -13,6 +13,7 @@
     "firebase": "^12.12.0",
     "firebase-admin": "^14.0.0",
     "html2canvas": "^1.4.1",
+    "jose": "^6.2.9",
     "lucide-react": "^1.23.0",
     "next": "14.2.35",
     "react": "^18",

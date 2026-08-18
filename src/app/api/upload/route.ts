@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { put, del } from '@vercel/blob';
+import { verifyRequestUser } from '@/lib/verifyAuth';
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
 
@@ -17,6 +18,12 @@ const ALLOWED = new Set([
 ]);
 
 export async function POST(req: Request) {
+  // 先驗身分再做其他事：這個端點會消耗儲存空間並可刪檔，不能對未登入者開放
+  const actor = await verifyRequestUser(req);
+  if (!actor) {
+    return NextResponse.json({ error: '請先登入後再上傳檔案。' }, { status: 401 });
+  }
+
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     return NextResponse.json(
       { error: '尚未設定 BLOB_READ_WRITE_TOKEN，請先在 Vercel 建立 Blob 儲存並執行 vercel env pull。' },
@@ -33,7 +40,8 @@ export async function POST(req: Request) {
 
   const file = form.get('file');
   const sprintId = String(form.get('sprintId') || 'unknown').replace(/[^A-Za-z0-9_-]/g, '_') || 'unknown';
-  const uploadedBy = String(form.get('uploadedBy') || '');
+  // 記錄上傳者一律採用驗證過的身分，不採信表單送來的值（否則可冒名）
+  const uploadedBy = actor.email || actor.uid;
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: '請選擇要上傳的檔案。' }, { status: 400 });
@@ -71,6 +79,11 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const actor = await verifyRequestUser(req);
+  if (!actor) {
+    return NextResponse.json({ error: '請先登入後再刪除檔案。' }, { status: 401 });
+  }
+
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     return NextResponse.json({ error: '尚未設定 BLOB_READ_WRITE_TOKEN。' }, { status: 500 });
   }
