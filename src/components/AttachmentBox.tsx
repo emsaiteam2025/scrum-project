@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Paperclip, X, Loader2 } from 'lucide-react';
 import type { Attachment } from '@/lib/taskTypes';
 import { auth } from '@/lib/firebase';
+import AttachmentViewer from '@/components/AttachmentViewer';
 
 // /api/upload 需要 Firebase ID Token 才會受理。取不到就讓請求帶空 header，
 // 由伺服器統一回 401，前端不必自己判斷登入狀態。
@@ -43,7 +44,33 @@ export default function AttachmentBox({
   const objUrlsRef = useRef<Record<string, string>>({});
   objUrlsRef.current = objUrls;
 
-  const pathKey = list.map(a => a.pathname).join('|');
+  const [viewing, setViewing] = useState<Attachment | null>(null);
+  const [fetching, setFetching] = useState<string | null>(null);
+
+  // 所有建立過的 object URL 都要記下來：預抓那批由 effect 的 cleanup 處理，
+  // 但點擊時才抓的那些不在 effect 裡，沒有這個 ref 就會一路累積到重新整理為止。
+  const createdUrlsRef = useRef<string[]>([]);
+  useEffect(() => () => {
+    createdUrlsRef.current.forEach(URL.revokeObjectURL);
+    createdUrlsRef.current = [];
+  }, []);
+
+  const fetchObjUrl = async (att: Attachment): Promise<string> => {
+    const cached = objUrlsRef.current[att.pathname];
+    if (cached) return cached;
+    const header = await authHeader();
+    if (!header.Authorization) return '';
+    const res = await fetch(`/api/blob?p=${encodeURIComponent(att.pathname)}`, { headers: header });
+    if (!res.ok) return '';
+    const objUrl = URL.createObjectURL(await res.blob());
+    createdUrlsRef.current.push(objUrl);
+    setObjUrls(prev => ({ ...prev, [att.pathname]: objUrl }));
+    return objUrl;
+  };
+
+  // 只預抓圖片——縮圖需要它，也讓點開彈視窗是瞬間的。
+  // 非圖片（PDF／Office／zip）沒有縮圖可畫，預抓等於白下載幾 MB，改成點擊時才抓。
+  const imageKey = list.filter(a => isImage(a.contentType)).map(a => a.pathname).join('|');
   useEffect(() => {
     let cancelled = false;
     const created: string[] = [];
@@ -52,7 +79,8 @@ export default function AttachmentBox({
       const header = await authHeader();
       if (!header.Authorization) return; // 未登入就不試著取，交由畫面顯示檔名即可
       for (const att of list) {
-        if (!att.pathname || objUrlsRef.current[att.pathname]) continue;
+        if (!att.pathname || !isImage(att.contentType)) continue;
+        if (objUrlsRef.current[att.pathname]) continue;
         try {
           const res = await fetch(`/api/blob?p=${encodeURIComponent(att.pathname)}`, { headers: header });
           if (!res.ok) continue;
@@ -68,7 +96,21 @@ export default function AttachmentBox({
 
     return () => { cancelled = true; created.forEach(URL.revokeObjectURL); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathKey]);
+  }, [imageKey]);
+
+  // 點擊開啟：圖片通常已預抓好、立刻就開；非圖片先開視窗顯示載入中再抓
+  const openViewer = async (att: Attachment) => {
+    setViewing(att);
+    if (objUrlsRef.current[att.pathname]) return;
+    setFetching(att.pathname);
+    try {
+      await fetchObjUrl(att);
+    } catch {
+      /* 失敗就讓視窗停在載入中，使用者可關掉重試 */
+    } finally {
+      setFetching(null);
+    }
+  };
 
   const upload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -147,29 +189,29 @@ export default function AttachmentBox({
               key={att.id}
               className="group/att relative flex items-center gap-1 bg-[#F6F3EB] border border-[#E9E5DA] rounded-md px-1.5 py-1"
             >
-              {isImage(att.contentType) && objUrls[att.pathname] ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={objUrls[att.pathname]} alt={att.name} className="w-8 h-8 object-cover rounded" />
-              ) : (
-                <Paperclip size={11} strokeWidth={1.75} className="text-[#8B887E]" />
-              )}
-              {objUrls[att.pathname] ? (
-                <a
-                  href={objUrls[att.pathname]}
-                  download={att.name}
-                  className="text-[10px] text-[#5A574E] hover:text-[#C96442] max-w-[110px] truncate"
-                  title={`${att.name}（${fmtSize(att.size)}）`}
-                >
-                  {att.name}
-                </a>
-              ) : (
-                <span
-                  className="text-[10px] text-[#8B887E] max-w-[110px] truncate"
-                  title={`${att.name}（${fmtSize(att.size)}）載入中`}
-                >
+              {/* 整塊都可點開檢視——截圖多半是要瞄一眼確認，不該還要先下載 */}
+              <button
+                type="button"
+                onClick={() => openViewer(att)}
+                className="flex items-center gap-1.5 min-w-0 text-left"
+                title={`${att.name}（${fmtSize(att.size)}）— 點擊檢視`}
+              >
+                {isImage(att.contentType) && objUrls[att.pathname] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={objUrls[att.pathname]}
+                    alt={att.name}
+                    className="w-12 h-12 object-cover rounded border border-[#E9E5DA] shrink-0"
+                  />
+                ) : fetching === att.pathname ? (
+                  <Loader2 size={11} strokeWidth={1.75} className="text-[#8B887E] animate-spin shrink-0" />
+                ) : (
+                  <Paperclip size={11} strokeWidth={1.75} className="text-[#8B887E] shrink-0" />
+                )}
+                <span className="text-[10px] text-[#5A574E] hover:text-[#C96442] max-w-[110px] truncate">
                   {att.name}
                 </span>
-              )}
+              </button>
               {!readOnly && (
                 <button
                   type="button"
@@ -183,6 +225,14 @@ export default function AttachmentBox({
             </div>
           ))}
         </div>
+      )}
+
+      {viewing && (
+        <AttachmentViewer
+          attachment={viewing}
+          objUrl={objUrls[viewing.pathname] || ''}
+          onClose={() => setViewing(null)}
+        />
       )}
 
       {!compact && !readOnly && (
