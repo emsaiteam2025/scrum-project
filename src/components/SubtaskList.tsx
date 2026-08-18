@@ -4,6 +4,7 @@ import { Plus, Trash2, Split } from 'lucide-react';
 import type { Subtask, DevMember } from '@/lib/taskTypes';
 import { canEditSubtask, type PlanningLike, type SprintLike, type UserLike } from '@/lib/permissions';
 import AttachmentBox from '@/components/AttachmentBox';
+import ProgressLog from '@/components/ProgressLog';
 
 export interface SubtaskListProps {
   subtasks: Subtask[];
@@ -17,6 +18,11 @@ export interface SubtaskListProps {
   sprintId: string;
   currentUserEmail: string;
   onChange: (next: Subtask[]) => void;
+  /** 進度紀錄：追加／刪除都要在 transaction 內部操作，因此只往上傳意圖，
+   *  不像其他欄位那樣把整包算好的陣列送出去 */
+  canDeleteAnyNote?: boolean;
+  onAppendNote?: (subtaskId: string, text: string) => void;
+  onDeleteNote?: (subtaskId: string, noteId: string) => void;
   /** 整張卡唯讀（例如公開連結檢視模式） */
   readOnly?: boolean;
   /** 子任務全數完成時呼叫，由呼叫端決定要不要詢問標記父任務完成 */
@@ -38,6 +44,7 @@ const STATUS_STYLE: Record<Subtask['status'], string> = {
 export default function SubtaskList({
   subtasks, roleNames, devMembers, sprint, planning, user,
   sprintId, currentUserEmail, onChange, readOnly, onAllDone,
+  canDeleteAnyNote, onAppendNote, onDeleteNote,
 }: SubtaskListProps) {
   const list = subtasks || [];
 
@@ -45,7 +52,7 @@ export default function SubtaskList({
     (devMembers || []).find(m => m.name === name)?.email || '';
 
   // 只開放字串型欄位，避免 keyof Subtask 讓 attachments 之類的欄位被塞進字串
-  type TextField = 'title' | 'desc' | 'time';
+  type TextField = 'title' | 'time';
 
   const patchText = (id: string, field: TextField, value: string) => {
     onChange(list.map(s => s.id === id ? { ...s, [field]: value, updatedAt: Date.now() } : s));
@@ -211,6 +218,16 @@ export default function SubtaskList({
                     : s));
                 }}
               />
+              {onAppendNote && onDeleteNote && (
+                <ProgressLog
+                  notes={sub.notes || []}
+                  currentUserEmail={currentUserEmail}
+                  readOnly={!editable}
+                  canDeleteAny={canDeleteAnyNote}
+                  onAppend={text => onAppendNote(sub.id, text)}
+                  onDelete={noteId => onDeleteNote(sub.id, noteId)}
+                />
+              )}
               {!editable && (
                 <div className="text-[10px] text-[#8B887E] mt-1">
                   {sub.assignee ? `僅 ${sub.assignee} 可編輯` : '僅專案擁有者可編輯'}

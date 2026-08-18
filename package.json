@@ -1,6 +1,6 @@
 {
   "name": "scrum-project",
-  "version": "1.0.252",
+  "version": "1.0.253",
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3033",

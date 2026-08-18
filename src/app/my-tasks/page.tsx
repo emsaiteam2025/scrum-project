@@ -4,9 +4,11 @@ import Link from 'next/link';
 import { BookOpen, Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import AttachmentBox from '@/components/AttachmentBox';
+import ProgressLog from '@/components/ProgressLog';
 import { fetchAccessibleSprints } from '@/lib/sprints';
 import {
   collectMyItems, isActiveSprint, updateSubtaskInSprint, updateTaskInSprint,
+  appendNoteInSprint, deleteNoteInSprint, makeNote,
   type SprintDoc, type MyTaskItem,
 } from '@/lib/myTasks';
 import type { Attachment, Subtask, Task } from '@/lib/taskTypes';
@@ -86,6 +88,22 @@ export default function MyTasks() {
       console.error('[my-tasks] 儲存失敗', err);
       alert('儲存失敗，請重新整理後再試。');
       await load();
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  // 進度紀錄的追加／刪除必須在 transaction 內部操作，不能沿用 persist——
+  // persist 送的是本機算好的完整欄位，兩人同時記錄會互相吃掉。
+  const runNote = async (it: MyTaskItem, fn: () => Promise<void>) => {
+    if (!user) return;
+    setSaving(keyOf(it));
+    try {
+      await fn();
+      await load();
+    } catch (err) {
+      console.error('[my-tasks] 進度紀錄失敗', err);
+      alert('進度紀錄儲存失敗，請重新整理後再試。');
     } finally {
       setSaving(null);
     }
@@ -222,6 +240,21 @@ export default function MyTasks() {
                             applyLocal(it, { attachments: next });
                             persist(it, { attachments: next });
                           }}
+                        />
+                        <ProgressLog
+                          notes={(it.subtask ? it.subtask.notes : it.task.notes) || []}
+                          currentUserEmail={user.email || ''}
+                          defaultOpen
+                          onAppend={text => {
+                            const actor = { email: user.email, displayName: user.displayName };
+                            const n = makeNote(text, actor);
+                            if (!n) return;
+                            runNote(it, () => appendNoteInSprint(
+                              it.sprintId, it.task.id, it.subtask?.id ?? null, n, actor));
+                          }}
+                          onDelete={noteId => runNote(it, () => deleteNoteInSprint(
+                            it.sprintId, it.task.id, it.subtask?.id ?? null, noteId,
+                            { email: user.email, displayName: user.displayName }))}
                         />
                       </div>
                     );

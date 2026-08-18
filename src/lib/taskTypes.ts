@@ -16,15 +16,25 @@ export interface Attachment {
   uploadedAt: number;     // Date.now()
 }
 
+// 進度紀錄：可累積的時間軸，讓接手的人讀完就知道發生過什麼、現在卡在哪。
+// 刻意「只能刪、不能改」——事後可編輯的時間軸就失去被信任的價值。
+export interface ProgressNote {
+  id: string;
+  text: string;
+  authorName: string;   // 顯示用
+  authorEmail: string;  // 判斷是否為本人所寫（決定能不能刪）
+  ts: number;
+}
+
 export interface Subtask {
   id: string;
   title: string;          // 這位負責人負責的內容
-  desc?: string;
   assignee: string;       // 開發者姓名，單一負責人
   assigneeEmail?: string; // 權限判斷依據；成員未填 email 時為 undefined
   status: 'todo' | 'doing' | 'done';
   time?: string;
   attachments?: Attachment[];
+  notes?: ProgressNote[];
   updatedAt?: number;
 }
 
@@ -42,6 +52,7 @@ export interface Task {
   color?: string;
   subtasks?: Subtask[];
   attachments?: Attachment[];
+  notes?: ProgressNote[];
 }
 
 // Planning 成員在 backlog 端的精簡形狀（存於 backlog.devMembers）

@@ -8,7 +8,7 @@
 
 import { doc, runTransaction, arrayUnion } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Task, Subtask } from './taskTypes';
+import type { Task, Subtask, ProgressNote } from './taskTypes';
 import { normEmail } from './permissions';
 
 export interface SprintDoc {
@@ -141,6 +141,94 @@ export async function updateTaskInSprint(
     tx.update(ref, {
       'backlog.tasks': next,
       editHistory: arrayUnion(historyEntry(actor, `任務：${Object.keys(patch).join('、')} 已更新`)),
+    });
+  });
+}
+
+// ── 進度紀錄 ─────────────────────────────────────────────────────────────
+//
+// 追加與刪除都在 transaction 內部先讀出當下的 notes 再改，而不是由呼叫端
+// 算好整包陣列送進來。兩個人同時記錄時，後者若帶著自己讀到的舊陣列覆寫，
+// 前者那則就會被吃掉——這正是 backlog 整包覆寫踩過的同一個坑。
+
+/**
+ * 建立一則進度紀錄。刻意由呼叫端先建好再傳進 appendNoteInSprint：
+ * 若讓伺服器端另外產生 id，前端樂觀插入的那則會有不同的 id，使用者剛記錄完
+ * 馬上按刪除就會刪不掉（伺服器找不到那個 id），重新整理後又冒出來。
+ */
+export function makeNote(text: string, actor: Actor): ProgressNote | null {
+  const body = text.trim();
+  if (!body) return null;
+  return {
+    id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    text: body,
+    authorName: actor.displayName || actor.email || '未具名',
+    authorEmail: (actor.email || '').trim().toLowerCase(),
+    ts: Date.now(),
+  };
+}
+
+/** 對某張任務（subtaskId 為 null）或某條子任務追加一則進度紀錄。 */
+export async function appendNoteInSprint(
+  sprintId: string,
+  taskId: string,
+  subtaskId: string | null,
+  note: ProgressNote,
+  actor: Actor
+): Promise<void> {
+  const body = note.text;
+  const ref = doc(db, 'sprints', sprintId);
+  await runTransaction(db, async tx => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error('找不到這個專案');
+    const tasks: Task[] = snap.data().backlog?.tasks || [];
+
+    const next = tasks.map(t => {
+      if (t.id !== taskId) return t;
+      if (!subtaskId) return { ...t, notes: [...(t.notes || []), note] };
+      return {
+        ...t,
+        subtasks: (t.subtasks || []).map(s => s.id !== subtaskId
+          ? s
+          : { ...s, notes: [...(s.notes || []), note], updatedAt: Date.now() }),
+      };
+    });
+
+    tx.update(ref, {
+      'backlog.tasks': next,
+      editHistory: arrayUnion(historyEntry(actor, `進度紀錄：${body.slice(0, 20)}${body.length > 20 ? '…' : ''}`)),
+    });
+  });
+}
+
+/** 刪除一則進度紀錄。權限已在 UI 判斷，這裡只負責原子性地移除。 */
+export async function deleteNoteInSprint(
+  sprintId: string,
+  taskId: string,
+  subtaskId: string | null,
+  noteId: string,
+  actor: Actor
+): Promise<void> {
+  const ref = doc(db, 'sprints', sprintId);
+  await runTransaction(db, async tx => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error('找不到這個專案');
+    const tasks: Task[] = snap.data().backlog?.tasks || [];
+
+    const next = tasks.map(t => {
+      if (t.id !== taskId) return t;
+      if (!subtaskId) return { ...t, notes: (t.notes || []).filter(n => n.id !== noteId) };
+      return {
+        ...t,
+        subtasks: (t.subtasks || []).map(s => s.id !== subtaskId
+          ? s
+          : { ...s, notes: (s.notes || []).filter(n => n.id !== noteId), updatedAt: Date.now() }),
+      };
+    });
+
+    tx.update(ref, {
+      'backlog.tasks': next,
+      editHistory: arrayUnion(historyEntry(actor, '進度紀錄：刪除一則')),
     });
   });
 }

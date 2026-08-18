@@ -5,12 +5,14 @@ import Navigation from '@/components/Navigation';
 import ScrumTooltip from '@/components/ScrumTooltip';
 import SaveIndicator from '@/components/SaveIndicator';
 import { jDays } from '@/lib/journal';
-import type { Task, DevMember, Subtask, Attachment } from '@/lib/taskTypes';
+import type { Task, DevMember, Subtask, Attachment, ProgressNote } from '@/lib/taskTypes';
 import { parseRoleNames } from '@/lib/taskTypes';
 import SubtaskList from '@/components/SubtaskList';
 import AttachmentBox from '@/components/AttachmentBox';
+import ProgressLog from '@/components/ProgressLog';
+import { isSprintAdmin } from '@/lib/permissions';
 import { useAuth } from '@/components/AuthProvider';
-import { updateTaskInSprint } from '@/lib/myTasks';
+import { updateTaskInSprint, appendNoteInSprint, deleteNoteInSprint, makeNote } from '@/lib/myTasks';
 import {
   Camera, Kanban, Target, BarChart2,
   ChevronUp, ChevronDown, Copy, Pencil, Trash2,
@@ -67,6 +69,9 @@ export default function Backlog() {
     devMembers: [] as DevMember[],
     planning: null as null | { po?: string; sm?: string; devsList?: { name: string; role?: string; email?: string }[] },
   });
+
+  // 擁有者／PO／SM 可刪除任何人的進度紀錄；一般成員只能刪自己的
+  const canDeleteAnyNote = isSprintAdmin({ ownerId: sprintOwnerId }, data.planning, user);
 
   const sprintDays = data.sprintDays;
   const tasks = data.tasks;
@@ -547,6 +552,69 @@ export default function Backlog() {
     patchTask(taskId, { subtasks: next });
   };
 
+  // 進度紀錄不能走 patchTask：那會把本機算好的整包 notes 送出去，
+  // 兩人同時記錄時後送的一方會吃掉前一則。改用在 transaction 內部
+  // 讀出當下 notes 再追加的專用函式。追加／刪除都是一次性動作，不防抖。
+  const runNoteOp = async (
+    op: 'append' | 'delete',
+    taskId: string,
+    subtaskId: string | null,
+    payload: ProgressNote | string,
+    optimistic: (prev: Task[]) => Task[]
+  ) => {
+    setSyncTasks(optimistic);
+    const sid = localStorage.getItem('currentSprintId') || currentSprintId;
+    if (!sid) return;
+    const actor = { email: user?.email ?? null, displayName: user?.displayName ?? null };
+    try {
+      // 與 flushTaskPatch 同理：任務可能還沒寫進雲端，先落地否則 transaction 找不到它
+      await forceSaveRef.current();
+      if (op === 'append') {
+        await appendNoteInSprint(sid, taskId, subtaskId, payload as ProgressNote, actor);
+      } else {
+        await deleteNoteInSprint(sid, taskId, subtaskId, payload as string, actor);
+      }
+      setSyncTasks(prev => prev, { markSaved: true });
+    } catch (err) {
+      console.error('[Backlog] 進度紀錄寫入失敗:', err);
+      alert('進度紀錄儲存失敗，請重新整理後再試。');
+    }
+  };
+
+  const noteActor = () => ({ email: user?.email ?? null, displayName: user?.displayName ?? null });
+
+  const appendTaskNote = (taskId: string, text: string) => {
+    const n = makeNote(text, noteActor());
+    if (!n) return;
+    runNoteOp('append', taskId, null, n, prev =>
+      prev.map(t => t.id === taskId ? { ...t, notes: [...(t.notes || []), n] } : t));
+  };
+
+  const deleteTaskNote = (taskId: string, noteId: string) => {
+    runNoteOp('delete', taskId, null, noteId, prev =>
+      prev.map(t => t.id === taskId ? { ...t, notes: (t.notes || []).filter(x => x.id !== noteId) } : t));
+  };
+
+  const appendSubtaskNote = (taskId: string, subtaskId: string, text: string) => {
+    const n = makeNote(text, noteActor());
+    if (!n) return;
+    runNoteOp('append', taskId, subtaskId, n, prev =>
+      prev.map(t => t.id !== taskId ? t : ({
+        ...t,
+        subtasks: (t.subtasks || []).map(sub => sub.id !== subtaskId
+          ? sub : { ...sub, notes: [...(sub.notes || []), n] }),
+      })));
+  };
+
+  const deleteSubtaskNote = (taskId: string, subtaskId: string, noteId: string) => {
+    runNoteOp('delete', taskId, subtaskId, noteId, prev =>
+      prev.map(t => t.id !== taskId ? t : ({
+        ...t,
+        subtasks: (t.subtasks || []).map(sub => sub.id !== subtaskId
+          ? sub : { ...sub, notes: (sub.notes || []).filter(x => x.id !== noteId) }),
+      })));
+  };
+
   // 附件的新增／刪除是一次性事件，立即寫出
   const updateAttachments = (taskId: string, next: Attachment[]) => {
     patchTask(taskId, { attachments: next }, true);
@@ -761,6 +829,9 @@ export default function Backlog() {
                     readOnly={isViewOnly}
                     onChange={next => updateSubtasks(task.id, next)}
                     onAllDone={() => handleAllSubtasksDone(task.id)}
+                    canDeleteAnyNote={canDeleteAnyNote}
+                    onAppendNote={(subId, text) => appendSubtaskNote(task.id, subId, text)}
+                    onDeleteNote={(subId, noteId) => deleteSubtaskNote(task.id, subId, noteId)}
                   />
                 </div>
               )}
@@ -771,6 +842,14 @@ export default function Backlog() {
                   uploadedBy={user?.email || ''}
                   readOnly={isViewOnly}
                   onChange={next => updateAttachments(task.id, next)}
+                />
+                <ProgressLog
+                  notes={task.notes || []}
+                  currentUserEmail={user?.email || ''}
+                  readOnly={isViewOnly}
+                  canDeleteAny={canDeleteAnyNote}
+                  onAppend={text => appendTaskNote(task.id, text)}
+                  onDelete={noteId => deleteTaskNote(task.id, noteId)}
                 />
               </div>
             </>
@@ -1102,6 +1181,14 @@ export default function Backlog() {
                             readOnly={isViewOnly}
                             onChange={next => updateAttachments(pbi.id, next)}
                           />
+                          <ProgressLog
+                            notes={pbi.notes || []}
+                            currentUserEmail={user?.email || ''}
+                            readOnly={isViewOnly}
+                            canDeleteAny={canDeleteAnyNote}
+                            onAppend={text => appendTaskNote(pbi.id, text)}
+                            onDelete={noteId => deleteTaskNote(pbi.id, noteId)}
+                          />
                         </div>
                         <div className="flex gap-1 flex-shrink-0">
                           <button onClick={() => handleAiGenerateTasks(pbi.id, pbi.title)} disabled={isAiLoading}
@@ -1207,6 +1294,9 @@ export default function Backlog() {
                                 readOnly={isViewOnly}
                                 onChange={next => updateSubtasks(task.id, next)}
                                 onAllDone={() => handleAllSubtasksDone(task.id)}
+                                canDeleteAnyNote={canDeleteAnyNote}
+                                onAppendNote={(subId, text) => appendSubtaskNote(task.id, subId, text)}
+                                onDeleteNote={(subId, noteId) => deleteSubtaskNote(task.id, subId, noteId)}
                               />
                               <AttachmentBox
                                 attachments={task.attachments || []}
@@ -1214,6 +1304,14 @@ export default function Backlog() {
                                 uploadedBy={user?.email || ''}
                                 readOnly={isViewOnly}
                                 onChange={next => updateAttachments(task.id, next)}
+                              />
+                              <ProgressLog
+                                notes={task.notes || []}
+                                currentUserEmail={user?.email || ''}
+                                readOnly={isViewOnly}
+                                canDeleteAny={canDeleteAnyNote}
+                                onAppend={text => appendTaskNote(task.id, text)}
+                                onDelete={noteId => deleteTaskNote(task.id, noteId)}
                               />
                             </>
                           )}
@@ -1315,6 +1413,9 @@ export default function Backlog() {
                                 readOnly={isViewOnly}
                                 onChange={next => updateSubtasks(task.id, next)}
                                 onAllDone={() => handleAllSubtasksDone(task.id)}
+                                canDeleteAnyNote={canDeleteAnyNote}
+                                onAppendNote={(subId, text) => appendSubtaskNote(task.id, subId, text)}
+                                onDeleteNote={(subId, noteId) => deleteSubtaskNote(task.id, subId, noteId)}
                               />
                               <AttachmentBox
                                 attachments={task.attachments || []}
@@ -1322,6 +1423,14 @@ export default function Backlog() {
                                 uploadedBy={user?.email || ''}
                                 readOnly={isViewOnly}
                                 onChange={next => updateAttachments(task.id, next)}
+                              />
+                              <ProgressLog
+                                notes={task.notes || []}
+                                currentUserEmail={user?.email || ''}
+                                readOnly={isViewOnly}
+                                canDeleteAny={canDeleteAnyNote}
+                                onAppend={text => appendTaskNote(task.id, text)}
+                                onDelete={noteId => deleteTaskNote(task.id, noteId)}
                               />
                             </>
                           )}
@@ -1464,6 +1573,14 @@ export default function Backlog() {
                                   uploadedBy={user?.email || ''}
                                   readOnly={isViewOnly}
                                   onChange={next => updateAttachments(task.id, next)}
+                                />
+                                <ProgressLog
+                                  notes={task.notes || []}
+                                  currentUserEmail={user?.email || ''}
+                                  readOnly={isViewOnly}
+                                  canDeleteAny={canDeleteAnyNote}
+                                  onAppend={text => appendTaskNote(task.id, text)}
+                                  onDelete={noteId => deleteTaskNote(task.id, noteId)}
                                 />
                               </div>
                             </>
