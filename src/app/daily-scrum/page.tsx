@@ -1,5 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import type { Task } from '@/lib/taskTypes';
+import DailyProgressDigest from '@/components/DailyProgressDigest';
 
 function AutoGrowTextarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -81,6 +83,11 @@ export default function DailyScrum() {
   });
 
   const [sprintStartDate, setSprintStartDate] = useState<string>('');
+  // 站會摘要要讀的進度紀錄住在 backlog.tasks 裡；下方那份 getDoc 已經把整份
+  // sprint 文件抓回來了，所以不需要額外讀取。
+  // 刻意與看板用的 backlogTasks 分開：那份被過濾成「只留掛在現存 PBI 底下的任務」，
+  // 拿來做摘要會默默漏掉 PBI 與無歸屬任務上的紀錄。
+  const [digestTasks, setDigestTasks] = useState<Task[]>([]);
   const [sprintName, setSprintName] = useState<string>('');
   const [devNames, setDevNames] = useState<string[]>([]);
   const [backlogTasks, setBacklogTasks] = useState<BacklogTask[]>([]);
@@ -118,6 +125,7 @@ export default function DailyScrum() {
         const { db } = await import('@/lib/firebase');
         const snap = await getDoc(doc(db, 'sprints', sprintId));
         if (snap.exists()) {
+          setDigestTasks(snap.data().backlog?.tasks || []);
           const planning = snap.data().planning;
           if (planning?.startDate) {
             setSprintStartDate(planning.startDate);
@@ -817,6 +825,14 @@ export default function DailyScrum() {
                               </div>
                             );
                           })()}
+
+                          {/* 進度紀錄摘要：講之前先看，不必再口頭複述一次 */}
+                          <DailyProgressDigest
+                            tasks={digestTasks}
+                            sprintStartDate={sprintStartDate}
+                            dayIndex={i}
+                            isHoliday={iso => holidayDateSet.has(iso)}
+                          />
 
                           {/* 三個問題 */}
                           {([
