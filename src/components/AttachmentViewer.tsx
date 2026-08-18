@@ -1,5 +1,6 @@
 "use client";
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Download, Loader2, FileText } from 'lucide-react';
 import type { Attachment } from '@/lib/taskTypes';
 
@@ -20,8 +21,18 @@ const fmtSize = (n: number) =>
  * 阻擋器會擋掉新分頁，而且截圖多半只是要瞄一眼確認，看完關掉就繼續，不該離開看板。
  */
 export default function AttachmentViewer({ attachment, objUrl, onClose }: AttachmentViewerProps) {
+  // SSR 時沒有 document，掛載後才能開 portal
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+
+  // onClose 多半是呼叫端的行內箭頭函式，每次 render 都是新的。
+  // 放進 effect 依賴會讓下面那個 effect 每次 render 都拆掉重裝，
+  // body.style.overflow 因此被反覆設定；用 ref 取最新值、依賴保持為空。
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCloseRef.current(); };
     window.addEventListener('keydown', onKey);
     // 遮罩開啟時鎖住底層捲動，否則滾滑鼠會捲到後面的看板
     const prev = document.body.style.overflow;
@@ -30,18 +41,20 @@ export default function AttachmentViewer({ attachment, objUrl, onClose }: Attach
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
     };
-  }, [onClose]);
+  }, []);
 
   const isImage = attachment.contentType.startsWith('image/');
   const isPdf = attachment.contentType === 'application/pdf';
 
-  return (
+  if (!mounted) return null;
+
+  // 必須 portal 到 body：任務卡有 hover:-translate-y-[1px]，而任何非 none 的
+  // transform 都會成為 position:fixed 子元素的定位基準——遮罩會被縮進卡片框內，
+  // 尺寸隨 hover 反覆變動，造成畫面持續閃爍。掛到 body 就不受任何祖先影響。
+  return createPortal(
     <div
       className="fixed inset-0 z-[100] bg-black/70 flex flex-col"
       onClick={onClose}
-      // 這個遮罩可能出現在 draggable 的看板卡片內，攔掉拖曳避免誤觸
-      onDragStart={e => e.stopPropagation()}
-      draggable={false}
     >
       {/* 標題列 */}
       <div
@@ -115,6 +128,7 @@ export default function AttachmentViewer({ attachment, objUrl, onClose }: Attach
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
