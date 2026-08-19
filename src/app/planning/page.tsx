@@ -731,6 +731,13 @@ export default function Home() {
                   <div className="text-xs text-[#8B887E]">
                     填入成員的 Google 帳號 Email 後，該成員會自動成為本專案協作者，登入後即可在「我的工作」看到並編輯指派給自己的項目。
                   </div>
+                  {(data.devsList || []).some(d => (d.name || '').trim() && !(d.email || '').trim()) && (
+                    <div className="text-xs text-[#B8893A] bg-[#F0E4C9] border border-[#E9E5DA] rounded-lg px-3 py-2">
+                      有成員尚未填 Email：
+                      {(data.devsList || []).filter(d => (d.name || '').trim() && !(d.email || '').trim()).map(d => d.name).join('、')}
+                      。他們無法在「我的工作」看到自己的項目，指派給他們的子任務也會變成所有人都能編輯。
+                    </div>
+                  )}
                 </div>
 
                 {/* 利害關係人 / 專家 */}

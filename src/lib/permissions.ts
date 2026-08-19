@@ -63,7 +63,15 @@ export function isSprintAdmin(
     .includes(myName);
 }
 
-/** 子任務可否編輯：全權編輯者，或本人。子任務沒填 assigneeEmail 時只有全權編輯者能改。 */
+/**
+ * 子任務可否編輯：全權編輯者、本人，或「這條子任務根本沒有身分可比對」時的任何登入者。
+ *
+ * 最後那條是刻意的：assigneeEmail 為空代表該成員在 Sprint Planning 沒填 Email
+ * （舊資料或還沒補），此時鎖住等於誰都不能動，但擋不住任何人——firestore.rules
+ * 本來就允許任何登入者寫入任何 sprint，這層鎖是協作提示而非安全機制。
+ * 為了資料不全就讓整個團隊動不了，代價遠大於它擋下的東西（它什麼也沒擋下）。
+ * 正解是去把 Email 補上，UI 會標出未填 Email 的成員提醒使用者。
+ */
 export function canEditSubtask(
   subtask: Pick<Subtask, 'assigneeEmail'>,
   sprint: SprintLike | null | undefined,
@@ -71,8 +79,9 @@ export function canEditSubtask(
   user: UserLike | null | undefined
 ): boolean {
   if (isSprintAdmin(sprint, planning, user)) return true;
-  if (!user?.email) return false;
+  if (!user) return false;
   const owner = normEmail(subtask.assigneeEmail);
-  if (!owner) return false;
+  if (!owner) return true;          // 無身分可鎖 → 不擋（見上方說明）
+  if (!user.email) return false;
   return owner === normEmail(user.email);
 }

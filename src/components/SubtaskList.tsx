@@ -234,6 +234,13 @@ export default function SubtaskList({
                   {sub.assignee ? `僅 ${sub.assignee} 可編輯` : '僅專案擁有者可編輯'}
                 </div>
               )}
+              {/* 沒有 email 就對不到登入身分，這條子任務等於誰都能改。
+                  明講出來，否則使用者只會覺得權限時好時壞。 */}
+              {editable && sub.assignee && !sub.assigneeEmail && (
+                <div className="text-[10px] text-[#B8893A] mt-1">
+                  {sub.assignee} 未填 Email，此項目目前所有人都能編輯 —— 請到 Sprint Planning 補上
+                </div>
+              )}
             </div>
           );
         })}
