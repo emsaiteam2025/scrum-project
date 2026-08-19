@@ -60,8 +60,16 @@ export default function DailyScrum() {
     dailyNotesQ1: {} as Record<number, string>,
     dailyNotesQ2: {} as Record<number, string>,
     dailyNotesQ3: {} as Record<number, string>,
-    leaveStatus: {} as Record<number, string[]>
+    leaveStatus: {} as Record<number, string[]>,
+    // 站會追蹤的加開天數。Sprint 超期但還在跑時，一天一天往後加格子；
+    // 刻意不動 Planning 的時間限制，所以 Backlog 週期、燃盡圖、成效報告都不受影響。
+    extraDays: 0 as number,
   });
+
+  // 追蹤格子的實際天數。這個檔案裡凡是「站會要追蹤幾天」都要用它，
+  // 漏掉任何一處都會讓加開的那幾天存不進 completedDays。
+  const extraDays = Math.max(0, Number(data.extraDays) || 0);
+  const totalDays = sprintDays + extraDays;
 
   const dailyNotes = data.dailyNotes || {};
   const dailyNotesQ1 = data.dailyNotesQ1 || {};
@@ -192,8 +200,8 @@ export default function DailyScrum() {
 
   const completedDays: boolean[] = (() => {
     const stored = data.completedDays || [];
-    const result = Array(sprintDays).fill(false);
-    for (let i = 0; i < Math.min(stored.length, sprintDays); i++) {
+    const result = Array(totalDays).fill(false);
+    for (let i = 0; i < Math.min(stored.length, totalDays); i++) {
       result[i] = !!stored[i];
     }
     return result;
@@ -244,9 +252,9 @@ export default function DailyScrum() {
 
   const handleSaveDay = (dayIndex: number) => {
     const stored = data.completedDays || [];
-    const merged = stored.length >= sprintDays
+    const merged = stored.length >= totalDays
       ? [...stored]
-      : [...stored, ...Array(sprintDays - stored.length).fill(false)];
+      : [...stored, ...Array(totalDays - stored.length).fill(false)];
     merged[dayIndex] = true;
     updateData({ completedDays: merged });
     setTimeout(() => forceSave(), 100);
@@ -266,9 +274,9 @@ export default function DailyScrum() {
     // 因此改成明確寫入空值覆蓋，清除才會真的生效。
     const blank = <V,>(m: Record<number, unknown>, empty: V) => ({ ...(m || {}), [index]: empty });
     const stored = data.completedDays || [];
-    const merged = stored.length >= sprintDays
+    const merged = stored.length >= totalDays
       ? [...stored]
-      : [...stored, ...Array(sprintDays - stored.length).fill(false)];
+      : [...stored, ...Array(totalDays - stored.length).fill(false)];
     merged[index] = false;
     updateData({
       dailyNotes: blank(dailyNotes, '') as Record<number, string>,
@@ -284,9 +292,9 @@ export default function DailyScrum() {
   const toggleCheck = (e: React.MouseEvent, index: number) => {
     e.stopPropagation();
     const stored = data.completedDays || [];
-    const merged = stored.length >= sprintDays
+    const merged = stored.length >= totalDays
       ? [...stored]
-      : [...stored, ...Array(sprintDays - stored.length).fill(false)];
+      : [...stored, ...Array(totalDays - stored.length).fill(false)];
     merged[index] = !merged[index];
     updateData({ completedDays: merged });
   };
@@ -400,7 +408,7 @@ export default function DailyScrum() {
             </div>
             {/* 剩餘工作天 */}
             {(() => {
-              const total = Number(sprintDays) || 0;
+              const total = Number(totalDays) || 0;
               if (!sprintStartDate) {
                 return (
                   <div className="inline-flex items-center gap-2 self-center bg-[#DDE6D9] text-[#4F7E5C] text-sm font-semibold px-4 py-2 rounded-lg flex-shrink-0">
@@ -584,13 +592,37 @@ export default function DailyScrum() {
               <div className="w-6 h-6 rounded-md bg-[#4F7E5C] flex items-center justify-center flex-shrink-0">
                 <CalendarDays size={13} strokeWidth={2} className="text-white" />
               </div>
-              <span className="text-sm font-semibold text-[#1F1D17]">{sprintDays} 天進度追蹤 (D1 – D{sprintDays})</span>
+              <span className="text-sm font-semibold text-[#1F1D17]">{totalDays} 天進度追蹤 (D1 – D{totalDays})</span>
+              {/* 加開天數：Sprint 超期但工作還在跑時，一天一天往後延。
+                  減少是非破壞性的——縮回去只是不顯示，那格已填的紀錄仍在資料裡。 */}
+              <div className="flex items-center gap-1 ml-1">
+                <button
+                  type="button"
+                  onClick={() => updateData({ extraDays: Math.max(0, extraDays - 1) })}
+                  disabled={extraDays === 0}
+                  className="w-6 h-6 rounded-md border border-[#E9E5DA] bg-white text-[#5A574E] text-xs leading-none hover:border-[#C96442] hover:text-[#C96442] transition-colors disabled:opacity-30 disabled:hover:border-[#E9E5DA] disabled:hover:text-[#5A574E]"
+                  title={extraDays === 0 ? '沒有加開的天數可以收回' : `收回一天（目前加開 ${extraDays} 天，資料不會刪除）`}
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateData({ extraDays: extraDays + 1 })}
+                  className="flex items-center gap-1 h-6 px-2 rounded-md border border-[#C96442] bg-white text-[#C96442] text-xs leading-none hover:bg-[#F5E4DA] transition-colors"
+                  title="專案還在跑但已超出原訂天數時，往後加一天"
+                >
+                  +1 天
+                </button>
+                {extraDays > 0 && (
+                  <span className="text-[10px] text-[#8B887E]">已加開 {extraDays} 天</span>
+                )}
+              </div>
             </div>
             {(() => {
               if (!sprintStartDate) return null;
               const today = new Date(); today.setHours(0,0,0,0);
               const start = new Date(sprintStartDate); start.setHours(0,0,0,0);
-              const total = Number(sprintDays) || 0;
+              const total = Number(totalDays) || 0;
               const sprintEnd = new Date(start); sprintEnd.setDate(sprintEnd.getDate() + total - 1);
               const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
               const elapsed = countWorkDays(start, today);
@@ -610,7 +642,7 @@ export default function DailyScrum() {
 
           <div className="p-4 md:p-5">
             <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-3">
-              {Array.from({ length: sprintDays }).map((_, i) => {
+              {Array.from({ length: totalDays }).map((_, i) => {
                 const isChecked = completedDays[i];
                 const dow = getDayOfWeek(i);
                 const isWeekend = dow === '週六' || dow === '週日';

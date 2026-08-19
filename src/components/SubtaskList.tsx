@@ -21,7 +21,7 @@ export interface SubtaskListProps {
   /** 進度紀錄：追加／刪除都要在 transaction 內部操作，因此只往上傳意圖，
    *  不像其他欄位那樣把整包算好的陣列送出去 */
   canDeleteAnyNote?: boolean;
-  onAppendNote?: (subtaskId: string, text: string) => void;
+  onAppendNote?: (subtaskId: string, text: string, mentions: string[]) => void;
   onDeleteNote?: (subtaskId: string, noteId: string) => void;
   /** 整張卡唯讀（例如公開連結檢視模式） */
   readOnly?: boolean;
@@ -224,7 +224,8 @@ export default function SubtaskList({
                   currentUserEmail={currentUserEmail}
                   readOnly={!editable}
                   canDeleteAny={canDeleteAnyNote}
-                  onAppend={text => onAppendNote(sub.id, text)}
+                  devMembers={devMembers}
+                  onAppend={(text, mentions) => onAppendNote(sub.id, text, mentions)}
                   onDelete={noteId => onDeleteNote(sub.id, noteId)}
                 />
               )}

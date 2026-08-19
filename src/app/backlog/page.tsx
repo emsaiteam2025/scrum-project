@@ -583,8 +583,8 @@ export default function Backlog() {
 
   const noteActor = () => ({ email: user?.email ?? null, displayName: user?.displayName ?? null });
 
-  const appendTaskNote = (taskId: string, text: string) => {
-    const n = makeNote(text, noteActor());
+  const appendTaskNote = (taskId: string, text: string, mentions: string[]) => {
+    const n = makeNote(text, noteActor(), mentions);
     if (!n) return;
     runNoteOp('append', taskId, null, n, prev =>
       prev.map(t => t.id === taskId ? { ...t, notes: [...(t.notes || []), n] } : t));
@@ -595,8 +595,8 @@ export default function Backlog() {
       prev.map(t => t.id === taskId ? { ...t, notes: (t.notes || []).filter(x => x.id !== noteId) } : t));
   };
 
-  const appendSubtaskNote = (taskId: string, subtaskId: string, text: string) => {
-    const n = makeNote(text, noteActor());
+  const appendSubtaskNote = (taskId: string, subtaskId: string, text: string, mentions: string[]) => {
+    const n = makeNote(text, noteActor(), mentions);
     if (!n) return;
     runNoteOp('append', taskId, subtaskId, n, prev =>
       prev.map(t => t.id !== taskId ? t : ({
@@ -830,7 +830,7 @@ export default function Backlog() {
                     onChange={next => updateSubtasks(task.id, next)}
                     onAllDone={() => handleAllSubtasksDone(task.id)}
                     canDeleteAnyNote={canDeleteAnyNote}
-                    onAppendNote={(subId, text) => appendSubtaskNote(task.id, subId, text)}
+                    onAppendNote={(subId, text, mentions) => appendSubtaskNote(task.id, subId, text, mentions)}
                     onDeleteNote={(subId, noteId) => deleteSubtaskNote(task.id, subId, noteId)}
                   />
                 </div>
@@ -847,8 +847,9 @@ export default function Backlog() {
                   notes={task.notes || []}
                   currentUserEmail={user?.email || ''}
                   readOnly={isViewOnly}
+                  devMembers={data.devMembers || []}
                   canDeleteAny={canDeleteAnyNote}
-                  onAppend={text => appendTaskNote(task.id, text)}
+                  onAppend={(text, mentions) => appendTaskNote(task.id, text, mentions)}
                   onDelete={noteId => deleteTaskNote(task.id, noteId)}
                 />
               </div>
@@ -1185,8 +1186,9 @@ export default function Backlog() {
                             notes={pbi.notes || []}
                             currentUserEmail={user?.email || ''}
                             readOnly={isViewOnly}
+                            devMembers={data.devMembers || []}
                             canDeleteAny={canDeleteAnyNote}
-                            onAppend={text => appendTaskNote(pbi.id, text)}
+                            onAppend={(text, mentions) => appendTaskNote(pbi.id, text, mentions)}
                             onDelete={noteId => deleteTaskNote(pbi.id, noteId)}
                           />
                         </div>
@@ -1295,7 +1297,7 @@ export default function Backlog() {
                                 onChange={next => updateSubtasks(task.id, next)}
                                 onAllDone={() => handleAllSubtasksDone(task.id)}
                                 canDeleteAnyNote={canDeleteAnyNote}
-                                onAppendNote={(subId, text) => appendSubtaskNote(task.id, subId, text)}
+                                onAppendNote={(subId, text, mentions) => appendSubtaskNote(task.id, subId, text, mentions)}
                                 onDeleteNote={(subId, noteId) => deleteSubtaskNote(task.id, subId, noteId)}
                               />
                               <AttachmentBox
@@ -1309,8 +1311,9 @@ export default function Backlog() {
                                 notes={task.notes || []}
                                 currentUserEmail={user?.email || ''}
                                 readOnly={isViewOnly}
+                                devMembers={data.devMembers || []}
                                 canDeleteAny={canDeleteAnyNote}
-                                onAppend={text => appendTaskNote(task.id, text)}
+                                onAppend={(text, mentions) => appendTaskNote(task.id, text, mentions)}
                                 onDelete={noteId => deleteTaskNote(task.id, noteId)}
                               />
                             </>
@@ -1414,7 +1417,7 @@ export default function Backlog() {
                                 onChange={next => updateSubtasks(task.id, next)}
                                 onAllDone={() => handleAllSubtasksDone(task.id)}
                                 canDeleteAnyNote={canDeleteAnyNote}
-                                onAppendNote={(subId, text) => appendSubtaskNote(task.id, subId, text)}
+                                onAppendNote={(subId, text, mentions) => appendSubtaskNote(task.id, subId, text, mentions)}
                                 onDeleteNote={(subId, noteId) => deleteSubtaskNote(task.id, subId, noteId)}
                               />
                               <AttachmentBox
@@ -1428,8 +1431,9 @@ export default function Backlog() {
                                 notes={task.notes || []}
                                 currentUserEmail={user?.email || ''}
                                 readOnly={isViewOnly}
+                                devMembers={data.devMembers || []}
                                 canDeleteAny={canDeleteAnyNote}
-                                onAppend={text => appendTaskNote(task.id, text)}
+                                onAppend={(text, mentions) => appendTaskNote(task.id, text, mentions)}
                                 onDelete={noteId => deleteTaskNote(task.id, noteId)}
                               />
                             </>
@@ -1578,8 +1582,9 @@ export default function Backlog() {
                                   notes={task.notes || []}
                                   currentUserEmail={user?.email || ''}
                                   readOnly={isViewOnly}
+                                  devMembers={data.devMembers || []}
                                   canDeleteAny={canDeleteAnyNote}
-                                  onAppend={text => appendTaskNote(task.id, text)}
+                                  onAppend={(text, mentions) => appendTaskNote(task.id, text, mentions)}
                                   onDelete={noteId => deleteTaskNote(task.id, noteId)}
                                 />
                               </div>

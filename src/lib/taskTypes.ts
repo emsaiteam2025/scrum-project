@@ -24,6 +24,12 @@ export interface ProgressNote {
   authorName: string;   // 顯示用
   authorEmail: string;  // 判斷是否為本人所寫（決定能不能刪）
   ts: number;
+  /**
+   * 被 @ 提及的成員 email（一律小寫）。
+   * 刻意存 email 而不是姓名，也刻意不從 text 事後反解：成員改名後靠文字比對
+   * 會全部失效，提交當下解析好存起來才永遠正確。
+   */
+  mentions?: string[];
 }
 
 export interface Subtask {

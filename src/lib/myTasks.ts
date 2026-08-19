@@ -156,10 +156,12 @@ export async function updateTaskInSprint(
  * 若讓伺服器端另外產生 id，前端樂觀插入的那則會有不同的 id，使用者剛記錄完
  * 馬上按刪除就會刪不掉（伺服器找不到那個 id），重新整理後又冒出來。
  */
-export function makeNote(text: string, actor: Actor): ProgressNote | null {
+export function makeNote(text: string, actor: Actor, mentions: string[] = []): ProgressNote | null {
   const body = text.trim();
   if (!body) return null;
+  const uniq = Array.from(new Set(mentions.map(e => e.trim().toLowerCase()).filter(Boolean)));
   return {
+    ...(uniq.length > 0 ? { mentions: uniq } : {}),
     id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     text: body,
     authorName: actor.displayName || actor.email || '未具名',
@@ -231,4 +233,43 @@ export async function deleteNoteInSprint(
       editHistory: arrayUnion(historyEntry(actor, '進度紀錄：刪除一則')),
     });
   });
+}
+
+export interface MentionItem {
+  sprintId: string;
+  sprintName: string;
+  taskId: string;
+  taskTitle: string;
+  subtaskId: string | null;
+  note: ProgressNote;
+}
+
+/** 找出提及某人的進度紀錄，跨 Sprint、由新到舊。 */
+export function collectMentions(sprints: SprintDoc[], email?: string | null): MentionItem[] {
+  const me = normEmail(email);
+  if (!me) return [];
+  const out: MentionItem[] = [];
+
+  for (const s of sprints) {
+    for (const t of s.backlog?.tasks || []) {
+      const take = (note: ProgressNote, subtaskId: string | null) => {
+        if (!(note.mentions || []).some(m => normEmail(m) === me)) return;
+        // 自己提到自己不用再提醒一次
+        if (normEmail(note.authorEmail) === me) return;
+        out.push({
+          sprintId: s.id,
+          sprintName: s.name || '(未命名專案)',
+          taskId: t.id,
+          taskTitle: t.title || '(未命名)',
+          subtaskId,
+          note,
+        });
+      };
+      for (const n of t.notes || []) take(n, null);
+      for (const sub of t.subtasks || []) {
+        for (const n of sub.notes || []) take(n, sub.id);
+      }
+    }
+  }
+  return out.sort((a, b) => b.note.ts - a.note.ts);
 }

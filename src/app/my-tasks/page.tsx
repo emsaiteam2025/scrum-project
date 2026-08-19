@@ -1,14 +1,14 @@
 "use client";
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { BookOpen, Loader2, RefreshCw } from 'lucide-react';
+import { BookOpen, Loader2, RefreshCw, AtSign } from 'lucide-react';
 import { useAuth } from '@/components/AuthProvider';
 import AttachmentBox from '@/components/AttachmentBox';
 import ProgressLog from '@/components/ProgressLog';
 import { fetchAccessibleSprints } from '@/lib/sprints';
 import {
   collectMyItems, isActiveSprint, updateSubtaskInSprint, updateTaskInSprint,
-  appendNoteInSprint, deleteNoteInSprint, makeNote,
+  appendNoteInSprint, deleteNoteInSprint, makeNote, collectMentions,
   type SprintDoc, type MyTaskItem,
 } from '@/lib/myTasks';
 import type { Attachment, Subtask, Task } from '@/lib/taskTypes';
@@ -48,6 +48,9 @@ export default function MyTasks() {
   const visibleSprints = includeCompleted ? sprints : sprints.filter(isActiveSprint);
   const items = collectMyItems(visibleSprints, user?.email)
     .filter(it => statusFilter === 'all' || it.status === statusFilter);
+
+  // 提及不受狀態篩選影響：被 tag 就是要看到，不該因為篩了「待辦」而消失
+  const mentions = collectMentions(visibleSprints, user?.email);
 
   const grouped = items.reduce<Record<string, MyTaskItem[]>>((acc, it) => {
     (acc[it.sprintId] = acc[it.sprintId] || []).push(it);
@@ -176,6 +179,40 @@ export default function MyTasks() {
           </label>
         </div>
 
+        {!loading && mentions.length > 0 && (
+          <div className="mb-5">
+            <div className="flex items-center gap-1.5 mb-2">
+              <AtSign size={14} strokeWidth={1.75} className="text-[#C96442]" />
+              <span className="text-sm font-semibold text-[#1F1D17]">有人提到你</span>
+              <span className="text-[10px] text-[#5A574E] bg-[#F5E4DA] px-1.5 py-0.5 rounded-full">
+                {mentions.length}
+              </span>
+            </div>
+            <div className="bg-white border border-[#E9E5DA] border-l-[3px] border-l-[#C96442] rounded-xl divide-y divide-[#E9E5DA]">
+              {mentions.map(m => (
+                <Link
+                  key={m.note.id}
+                  href={`/backlog?sprint=${m.sprintId}`}
+                  className="block px-3 py-2 hover:bg-[#F6F3EB] transition-colors"
+                >
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-medium text-[#5A574E]">{m.note.authorName}</span>
+                    <span className="text-[10px] text-[#B5B2A6]">
+                      {new Date(m.note.ts).toLocaleDateString('zh-TW', { month: '2-digit', day: '2-digit' })}
+                    </span>
+                    <span className="text-[10px] text-[#8B887E] bg-[#F6F3EB] px-1.5 py-0.5 rounded">
+                      {m.sprintName} · {m.taskTitle}
+                    </span>
+                  </div>
+                  <div className="text-xs text-[#1F1D17] break-words whitespace-pre-wrap leading-relaxed mt-0.5">
+                    {m.note.text}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="flex items-center gap-2 text-[#8B887E] text-sm py-8 justify-center">
             <Loader2 size={16} className="animate-spin" /> 載入中…
@@ -245,9 +282,9 @@ export default function MyTasks() {
                           notes={(it.subtask ? it.subtask.notes : it.task.notes) || []}
                           currentUserEmail={user.email || ''}
                           defaultOpen
-                          onAppend={text => {
+                          onAppend={(text, mentions) => {
                             const actor = { email: user.email, displayName: user.displayName };
-                            const n = makeNote(text, actor);
+                            const n = makeNote(text, actor, mentions);
                             if (!n) return;
                             runNote(it, () => appendNoteInSprint(
                               it.sprintId, it.task.id, it.subtask?.id ?? null, n, actor));
