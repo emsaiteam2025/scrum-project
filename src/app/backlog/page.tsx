@@ -67,7 +67,7 @@ export default function Backlog() {
     // devsList 是既有的純姓名陣列（UI 在用，型別不可動）；
     // devMembers 是新增的姓名＋Email，供子任務綁定身分使用。
     devMembers: [] as DevMember[],
-    planning: null as null | { po?: string; sm?: string; devsList?: { name: string; role?: string; email?: string }[] },
+    planning: null as null | { po?: string; sm?: string; devsList?: { name: string; role?: string; email?: string; isLead?: boolean }[] },
   });
 
   // 擁有者／PO／SM 可刪除任何人的進度紀錄；一般成員只能刪自己的
@@ -142,9 +142,10 @@ export default function Backlog() {
             }
           }
           if (planningData.devs || planningData.devsList) {
-            const structured: { name: string; role?: string; email?: string }[] = Array.isArray(planningData.devsList)
-              ? planningData.devsList
-              : [];
+            // 這份要「原樣」存進 planning 快照（isLead 等權限欄位靠它傳遞），
+            // 不要在這裡 map 成別的形狀，否則主編輯權限會默默失效
+            const structured: { name: string; role?: string; email?: string; isLead?: boolean }[] =
+              Array.isArray(planningData.devsList) ? planningData.devsList : [];
             const fromStructured = structured
               .map(d => ({ name: (d.name || '').trim(), email: (d.email || '').trim().toLowerCase() }))
               .filter(d => d.name);

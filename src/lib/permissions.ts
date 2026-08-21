@@ -10,6 +10,12 @@ export interface PlanningMember {
   name: string;
   role?: string;
   email?: string;
+  /**
+   * 主編輯：可編輯這個 Sprint 的任何東西（含別人的子任務）。
+   * 在 Sprint Planning 成員表勾選。比對身分靠 email，因此沒填 email 的成員
+   * 勾了也不會生效——UI 端已停用該情況的勾選框。
+   */
+  isLead?: boolean;
 }
 
 export interface PlanningLike {
@@ -54,8 +60,14 @@ export function isSprintAdmin(
   if (!sprint?.ownerId || sprint.ownerId === user.uid) return true;
 
   const me = findMemberByEmail(planning, user.email);
-  if (!me?.name) return false;
-  const myName = me.name.trim();
+  if (!me) return false;
+
+  // 明確勾選的主編輯
+  if (me.isLead) return true;
+
+  // 舊規則：姓名等於 PO/SM。保留但脆弱——po/sm 存的是自由輸入的姓名字串，
+  // 只有在它恰好等於某位有填 email 的成員姓名時才生效。
+  const myName = (me.name || '').trim();
   if (!myName) return false;
   return [planning?.po, planning?.sm]
     .map(v => (v || '').trim())

@@ -35,7 +35,7 @@ export default function Home() {
     po: '',
     sm: '',
     devs: '',
-    devsList: [{ id: '1', name: '', role: '', email: '' }] as { id: string; name: string; role: string; email: string }[],
+    devsList: [{ id: '1', name: '', role: '', email: '', isLead: false }] as { id: string; name: string; role: string; email: string; isLead?: boolean }[],
     whys: [{ id: '1', text: '' }],
     whats: [{ id: '1', text: '' }],
     hows: [{ id: '1', text: '' }]
@@ -58,9 +58,15 @@ export default function Home() {
     devsHydratedRef.current = true;
   }, [loading, data.devs, data.devsList, updateData]);
 
-  const syncDevsString = (list: { id: string; name: string; role: string; email: string }[]) => {
+  const syncDevsString = (list: { id: string; name: string; role: string; email: string; isLead?: boolean }[]) => {
     const joined = list.map(d => d.name.trim()).filter(Boolean).join(',');
     updateData({ devsList: list, devs: joined });
+  };
+
+  const toggleLead = (index: number) => {
+    const list = [...(data.devsList || [])];
+    list[index] = { ...list[index], isLead: !list[index].isLead };
+    syncDevsString(list);
   };
 
   const updateDev = (index: number, field: 'name' | 'role' | 'email', value: string) => {
@@ -702,14 +708,36 @@ export default function Home() {
                               placeholder="角色（例：Tech Lead）"
                             />
                           </div>
-                          <input
-                            type="email"
-                            value={dev.email || ''}
-                            onChange={e => updateDev(i, 'email', e.target.value)}
-                            onBlur={() => syncMembersToCollaborators()}
-                            className="bg-transparent border-b border-transparent focus:border-[#C96442] outline-none text-xs text-[#8B887E] placeholder-[#B5B2A6]"
-                            placeholder="Google 帳號 Email（填了才能登入認領自己的工作）"
-                          />
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="email"
+                              value={dev.email || ''}
+                              onChange={e => updateDev(i, 'email', e.target.value)}
+                              onBlur={() => syncMembersToCollaborators()}
+                              className="flex-1 min-w-0 bg-transparent border-b border-transparent focus:border-[#C96442] outline-none text-xs text-[#8B887E] placeholder-[#B5B2A6]"
+                              placeholder="Google 帳號 Email（填了才能登入認領自己的工作）"
+                            />
+                            {/* 主編輯的比對靠 email，沒填 email 就勾了也不會生效，
+                                所以直接停用——不然只會製造「我明明勾了卻沒權限」的困惑 */}
+                            <label
+                              className={`flex items-center gap-1 text-[11px] shrink-0 whitespace-nowrap ${
+                                (dev.email || '').trim()
+                                  ? 'text-[#5A574E] cursor-pointer'
+                                  : 'text-[#B5B2A6] cursor-not-allowed'
+                              }`}
+                              title={(dev.email || '').trim()
+                                ? '主編輯可以編輯這個 Sprint 的任何東西，包含別人的子任務'
+                                : '要先填 Email 才能設為主編輯（權限比對靠 Email）'}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={!!dev.isLead}
+                                disabled={!(dev.email || '').trim()}
+                                onChange={() => toggleLead(i)}
+                              />
+                              主編輯
+                            </label>
+                          </div>
                         </div>
                         <button
                           onClick={() => removeDev(i)}
@@ -735,7 +763,7 @@ export default function Home() {
                     <div className="text-xs text-[#B8893A] bg-[#F0E4C9] border border-[#E9E5DA] rounded-lg px-3 py-2">
                       有成員尚未填 Email：
                       {(data.devsList || []).filter(d => (d.name || '').trim() && !(d.email || '').trim()).map(d => d.name).join('、')}
-                      。他們無法在「我的工作」看到自己的項目，指派給他們的子任務也會變成所有人都能編輯。
+                      。他們無法在「我的工作」看到自己的項目，指派給他們的子任務會變成所有人都能編輯，也無法被設為主編輯。
                     </div>
                   )}
                 </div>
